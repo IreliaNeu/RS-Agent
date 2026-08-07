@@ -14,9 +14,13 @@ dependencies = [
   "pillow>=10,<12",
   "pydantic>=2.7,<3",
   "pydantic-settings>=2.2,<3",
+  "python-dotenv>=1,<2",
   "pyyaml>=6,<7",
   "tenacity>=8.2,<10",
 ]
+
+[project.scripts]
+rs-agent-cc = "rs_agent.applications.rs_cc:main"
 
 [project.optional-dependencies]
 evaluation = [

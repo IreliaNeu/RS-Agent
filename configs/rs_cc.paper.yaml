@@ -1,0 +1,57 @@
+profile: icassp_rs_cc_paper_v1
+
+providers:
+  openrouter:
+    api_style: openai_compatible
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    timeout_seconds: 90
+    max_retries: 3
+    max_concurrency: 5
+    headers:
+      HTTP-Referer: https://github.com/IreliaNeu/RS-Agent
+      X-Title: RS-Agent
+
+caption_generators:
+  - name: Claude-Sonnet-4
+    provider: openrouter
+    model: anthropic/claude-sonnet-4
+    temperature: 0.0
+    max_tokens: 256
+  - name: DeepSeek-V3
+    provider: openrouter
+    model: deepseek/deepseek-chat-v3-0324
+    temperature: 0.0
+    max_tokens: 256
+  - name: GPT-4o-mini
+    provider: openrouter
+    model: openai/gpt-4o-mini
+    temperature: 0.0
+    max_tokens: 256
+  - name: Qwen3-30B
+    provider: openrouter
+    model: qwen/qwen3-30b-a3b
+    temperature: 0.0
+    max_tokens: 256
+  - name: LLaMA-4-Maverick
+    provider: openrouter
+    model: meta-llama/llama-4-maverick
+    temperature: 0.0
+    max_tokens: 256
+
+selector:
+  name: GPT-4o-Selector
+  provider: openrouter
+  model: openai/gpt-4o
+  temperature: 0.0
+  max_tokens: 16
+
+evaluator:
+  name: GPT-4o-Evaluator
+  provider: openrouter
+  model: openai/gpt-4o
+  temperature: 0.0
+  max_tokens: 256
+
+prompt_profile: base
+minimum_successful_candidates: 5
