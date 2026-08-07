@@ -1,0 +1,38 @@
+profile: paper_reproduction
+random_seed: 42
+
+caption:
+  enrichment_inputs:
+    - image_before
+    - image_after
+    - original_pair_caption
+  candidate_count: 5
+  candidate_strategy: distinct_models
+  selection: highest_judge_score
+
+knowledge_bridge:
+  enabled: true
+  payload: selected_caption_only
+
+vqa:
+  visual_inputs:
+    - image_before
+    - image_after
+  question_sources:
+    - user
+    - system_template
+  mask_as_visual_input: false
+
+mask:
+  enabled: false
+  role: optional_evidence
+
+memory:
+  cross_sample: false
+  session: false
+
+evaluation:
+  preserve_all_candidates: true
+  preserve_raw_responses: true
+  llm_as_judge: true
+
