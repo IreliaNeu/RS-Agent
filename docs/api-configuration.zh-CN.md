@@ -14,23 +14,39 @@
 
 ```dotenv
 OPENROUTER_API_KEY=替换为你的OpenRouterKey
+SILICONFLOW_API_KEY=替换为你的SiliconFlowKey
 RS_AGENT_ARTIFACT_DIR=./artifacts
 RS_AGENT_CACHE_DIR=./cache
 ```
 
-目前论文 RS-CC 配置中的五个候选模型、Selector 和 Evaluator 均通过 OpenRouter 调用，所以只需要填写 `OPENROUTER_API_KEY`。未使用的供应商 key 可以暂时留空。
+两个 key 已在服务器上通过 `/models` 接口验证，但文档和日志不会记录其具体内容。
 
-论文配置文件：
+## 论文配置
 
 ```text
 /root/autodl-tmp/RS-Agent/configs/rs_cc.paper.yaml
 ```
 
-YAML 只保存模型 ID、接口地址、温度和并发参数，不保存 key。当前候选模型为 Claude-Sonnet-4、DeepSeek V3、GPT-4o-mini、Qwen3-30B 和 LLaMA-4-Maverick；Selector 与 Evaluator 都使用 GPT-4o，但在配置中保持为两个独立角色。
+论文角色保持不变：
 
-## 无 Key 校验
+- DeepSeek V3：硅基流动 `deepseek-ai/DeepSeek-V3`
+- Qwen3-30B：硅基流动 `Qwen/Qwen3-30B-A3B-Instruct-2507`
+- Claude-Sonnet-4、GPT-4o-mini、LLaMA-4-Maverick：OpenRouter
+- GPT-4o Selector 和 Evaluator：OpenRouter，保持两个独立角色
 
-以下命令只校验配置和 JSONL，不调用 API：
+服务器所在区域调用 OpenRouter 的 Anthropic、OpenAI 和 Google 模型时返回 HTTP 403。该限制来自模型区域策略，不是 key 无效。LLaMA、Mistral 以及硅基流动的 DeepSeek/Qwen 已完成真实调用验证。
+
+## 流程验证配置
+
+```text
+/root/autodl-tmp/RS-Agent/configs/rs_cc.smoke.yaml
+```
+
+该配置仅用于验证代码和产物逻辑，采用 OpenRouter 上地区可用的 Mistral/LLaMA，以及硅基流动的 DeepSeek/Qwen。Selector 和 Evaluator 使用硅基流动 DeepSeek V3。
+
+该配置不是论文模型组合，输出不能作为论文复现实验结果。
+
+## 无 API 请求校验
 
 ```bash
 cd /root/autodl-tmp/RS-Agent
@@ -41,23 +57,15 @@ rs-agent-cc \
   --dry-run
 ```
 
-## 正式运行
-
-填写 key 后可执行：
+## 可运行流程验证
 
 ```bash
 cd /root/autodl-tmp/RS-Agent
 conda activate rs-agent
 rs-agent-cc \
-  --config configs/rs_cc.paper.yaml \
-  --input /path/to/change_agent_captions.jsonl \
+  --config configs/rs_cc.smoke.yaml \
+  --input /root/autodl-tmp/rs-agent-data/change-agent/levir_mci_pipeline_smoke_3.jsonl \
   --artifact-dir /root/autodl-tmp/rs-agent-artifacts
 ```
 
-输入中每个图像对只对应一条 Change-Agent 生成描述：
-
-```json
-{"item_id":"test_000001","original_caption":"Two buildings appeared near the road."}
-```
-
-兼容旧评估脚本中的 `Original Caption` 字段。不要直接把 LEVIR-MCI 的五条人工 ground truth 当成正式 RS-CC 的原始输入。
+输入中每个图像对只对应一条 Change-Agent 生成描述。不要直接把 LEVIR-MCI 的五条人工 ground truth 当成正式 RS-CC 原始输入。

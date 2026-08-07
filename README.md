@@ -2,7 +2,7 @@
 
 RS-Agent is a research-oriented pipeline for multi-agent remote-sensing image change understanding. Its first objective is to reproduce the workflow described in our ICASSP paper: multi-model caption enrichment, LLM-as-Judge evaluation, a caption knowledge bridge, remote-sensing VQA, optional change-mask evidence, and model evaluation.
 
-This project is independently maintained and is based in part on [Change-Agent](https://github.com/Chen-Yang-Liu/Change-Agent). Curated legacy source is kept under `legacy/` as a migration reference; all new implementation belongs under `src/rs_agent/`.
+This project is independently maintained and is based in part on [Change-Agent](https://github.com/Chen-Yang-Liu/Change-Agent). Curated legacy source is kept under `legacy/` as a migration reference; all new implementation belongs under `src/rs_agent/` and `scripts/`.
 
 ## Implemented
 
@@ -13,14 +13,15 @@ This project is independently maintained and is based in part on [Change-Agent](
   - GPT-4o-mini
   - Qwen3-30B
   - LLaMA-4-Maverick
-- GPT-4o selector and evaluator stages configured independently from the generators.
+- OpenRouter and SiliconFlow routing through one OpenAI-compatible provider interface.
+- Independently configured selector and evaluator roles.
 - Deterministic `C*` selection: highest 1-10 evaluator score, selector choice as the tie-breaker, then stable label order.
 - Strict schemas for requests, candidates, raw model responses, evaluations, and results.
-- An asynchronous OpenAI-compatible provider for OpenRouter and similar APIs.
 - Concurrency limits, timeout handling, bounded retries, and non-retryable 4xx handling.
 - A write-once JSON artifact store with SHA-256 integrity verification.
-- Compatibility parsing for both normalized input and the original `Original Caption` JSONL field.
+- Compatibility parsing for normalized input and the original `Original Caption` JSONL field.
 - A no-key CLI dry-run that validates model configuration and input records.
+- A reproducible Change-Agent batch inference script that loads the MCI model once and writes one caption per LEVIR-MCI pair.
 - Compatibility export for the original full-result, best-caption, and model-mapping files.
 
 ## Pipeline Boundary
@@ -29,9 +30,9 @@ The current RS-CC baseline deliberately receives text only. The original input i
 
 Bi-temporal images are reserved for the later RS-VQA stage, whose model set differs from RS-CC. Optional masks remain evidence rather than a mandatory caption input.
 
-## Environment
+## Environments
 
-The core environment follows the Change-Agent Python 3.9 baseline.
+The lightweight API and evaluation environment follows the Change-Agent Python 3.9 baseline.
 
 ```bash
 conda env create -f environment.yml
@@ -40,11 +41,17 @@ pip install -e ".[dev,evaluation]"
 pytest -q
 ```
 
-The MCI model has a separate legacy CUDA/OpenMMLab dependency set in `requirements/mci-legacy.txt`. It is intentionally not installed as part of the lightweight API and evaluation environment.
+MCI inference is isolated in `rs-agent-mci`. On the validated AutoDL image it clones the base Torch 2.8.0/CUDA 12.8 environment and adds only `einops`, `imageio`, and `timm`; it does not pollute the API environment. See `environment.mci-inference.yml` and the Phase 4 progress record.
+
+## Provider Profiles
+
+`configs/rs_cc.paper.yaml` preserves the paper model roles. DeepSeek V3 and Qwen3-30B use SiliconFlow; Claude, GPT-4o-mini, LLaMA-4-Maverick, and GPT-4o Judge use OpenRouter.
+
+The current server region receives HTTP 403 for OpenRouter-hosted Anthropic, OpenAI, and Google models. Therefore `configs/rs_cc.smoke.yaml` is an explicitly non-paper operational profile used only to validate orchestration. It uses region-accessible Mistral/LLaMA models on OpenRouter and DeepSeek/Qwen models plus Judge on SiliconFlow. Smoke-profile outputs must not be reported as paper reproduction results.
 
 ## RS-CC Usage
 
-Copy `.env.example` to `.env`, then set `OPENROUTER_API_KEY`. Credentials never belong in YAML, Python source, artifacts, or Git history.
+Copy `.env.example` to `.env`, then set `OPENROUTER_API_KEY` and `SILICONFLOW_API_KEY`. Credentials never belong in YAML, Python source, artifacts, or Git history.
 
 Validate the paper profile and input without making API requests:
 
@@ -55,26 +62,41 @@ rs-agent-cc \
   --dry-run
 ```
 
-Run one caption directly:
+Run the operational workflow check:
 
 ```bash
 rs-agent-cc \
-  --config configs/rs_cc.paper.yaml \
-  --caption "Two buildings appeared near the road." \
-  --item-id test_000001
+  --config configs/rs_cc.smoke.yaml \
+  --input examples/rs_cc_input.jsonl \
+  --artifact-dir /root/autodl-tmp/rs-agent-artifacts
 ```
 
 Normalized batch input uses one JSON object per line:
 
 ```json
-{"item_id":"test_000001","original_caption":"Two buildings appeared near the road.","source":"change-agent"}
+{"item_id":"test_000001","original_caption":"The scene is the same as before.","source":"change-agent"}
 ```
 
 For each successful item, the pipeline writes separate immutable artifacts for all five candidates and raw responses, the selector/evaluator record, and the final `C*` result.
 
+## Change-Agent Batch Inference
+
+```bash
+conda activate rs-agent-mci
+python scripts/generate_change_agent_captions.py \
+  --source-root /root/autodl-tmp/Change-Agent-upstream/Multi_change \
+  --dataset-root /root/autodl-tmp/datasets/LEVIR-MCI/LEVIR-MCI-dataset \
+  --checkpoint /root/autodl-tmp/models/change-agent/MCI_model.pth \
+  --output /root/autodl-tmp/rs-agent-data/change-agent/levir_mci_test_100.jsonl \
+  --split test \
+  --limit 100
+```
+
+The output is incrementally flushed, while a companion manifest records the model hash, sample count, runtime, Torch/CUDA versions, and GPU.
+
 ## Dataset
 
-LEVIR-MCI is obtained from the dataset release referenced by Change-Agent. It is not committed to this repository. See `docs/datasets/levir-mci.md` for layout, integrity information, and the distinction between reference captions and Change-Agent outputs.
+LEVIR-MCI is obtained from the dataset release referenced by Change-Agent and is not committed to this repository. See `docs/datasets/levir-mci.md` for integrity details and generated-data locations.
 
 ## Repository Layout
 
@@ -85,8 +107,9 @@ src/rs_agent/providers/       External model API adapters
 src/rs_agent/evaluation/      LLM-as-Judge parsing, selection, and exports
 src/rs_agent/domains/         Domain-specific agents, prompts, and data adapters
 src/rs_agent/orchestration/   End-to-end pipeline composition
+scripts/                      Reproducible data-generation utilities
 legacy/                       Curated migration reference from the original project
-configs/                      Reproducible experiment configuration
+configs/                      Paper and operational experiment profiles
 docs/progress/                Stage-by-stage implementation records
 ```
 
@@ -95,12 +118,12 @@ docs/progress/                Stage-by-stage implementation records
 - Paper reproduction runs do not use cross-sample memory.
 - Every candidate, raw model response, score, and selection is retained.
 - Candidate generation, selector, and evaluator models remain explicitly configured.
+- Operational fallback profiles are never mixed with paper-result profiles.
 - Artifacts are write-once and integrity checked.
 - API credentials are never stored in experiment artifacts or Git history.
 
 ## Next Milestones
 
-- Produce or import the Change-Agent one-caption-per-pair LEVIR-MCI input file.
 - Implement the separate five-model RS-VQA stage and preset question templates.
 - Pass only final `C*` through the Knowledge Bridge.
 - Add optional MCI mask evidence and the complete Main-Agent workflow.

@@ -1,0 +1,12 @@
+name: rs-agent-mci
+channels:
+  - defaults
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      - torch==2.8.0
+      - torchvision==0.23.0
+      - einops==0.8.2
+      - imageio==2.37.4
+      - timm==1.0.28
