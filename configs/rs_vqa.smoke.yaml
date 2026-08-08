@@ -1,0 +1,65 @@
+profile: rs_vqa_operational_smoke_v1
+
+providers:
+  openrouter:
+    api_style: openai_compatible
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    timeout_seconds: 90
+    max_retries: 2
+    max_concurrency: 5
+    headers:
+      HTTP-Referer: https://github.com/IreliaNeu/RS-Agent
+      X-Title: RS-Agent
+  siliconflow:
+    api_style: openai_compatible
+    base_url: https://api.siliconflow.cn/v1
+    api_key_env: SILICONFLOW_API_KEY
+    timeout_seconds: 90
+    max_retries: 2
+    max_concurrency: 2
+
+answer_models:
+  - name: MiniMax-01
+    provider: openrouter
+    model: minimax/minimax-01
+    temperature: 0.0
+    max_tokens: 256
+  - name: Mistral-Small-3.1
+    provider: openrouter
+    model: mistralai/mistral-small-3.1-24b-instruct
+    temperature: 0.0
+    max_tokens: 256
+  - name: LLaMA-4-Maverick
+    provider: openrouter
+    model: meta-llama/llama-4-maverick
+    temperature: 0.0
+    max_tokens: 256
+  - name: Qwen3-VL-30B-A3B-Instruct
+    provider: siliconflow
+    model: Qwen/Qwen3-VL-30B-A3B-Instruct
+    temperature: 0.0
+    max_tokens: 256
+  - name: Mistral-Small-3.2
+    provider: openrouter
+    model: mistralai/mistral-small-3.2-24b-instruct
+    temperature: 0.0
+    max_tokens: 256
+
+selector:
+  name: Qwen3-VL-32B-Selector
+  provider: siliconflow
+  model: Qwen/Qwen3-VL-32B-Instruct
+  temperature: 0.0
+  max_tokens: 16
+
+evaluator:
+  name: Qwen3-VL-32B-Evaluator
+  provider: siliconflow
+  model: Qwen/Qwen3-VL-32B-Instruct
+  temperature: 0.0
+  max_tokens: 256
+
+default_template_ids:
+  - change_summary
+minimum_successful_answers_per_question: 4

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -22,6 +23,31 @@ def chat_completions_url(base_url: str) -> str:
     if base.endswith("/v1"):
         return base + "/chat/completions"
     return base + "/v1/chat/completions"
+
+
+def assistant_message_for_followup(response: ModelResponse) -> ChatMessage:
+    """Return the assistant turn with OpenRouter reasoning fields unchanged."""
+    if response.assistant_message:
+        message = deepcopy(response.assistant_message)
+        message["role"] = "assistant"
+        message.setdefault("content", response.content)
+        return message
+    return {"role": "assistant", "content": response.content}
+
+
+def _text_content(content: Any) -> str:
+    if isinstance(content, str):
+        return content.strip()
+    if not isinstance(content, list):
+        return ""
+    parts = []
+    for item in content:
+        if not isinstance(item, dict):
+            continue
+        value = item.get("text") if item.get("type") == "text" else item.get("content")
+        if isinstance(value, str) and value.strip():
+            parts.append(value.strip())
+    return "\n".join(parts)
 
 
 class OpenAICompatibleProvider:
@@ -103,7 +129,7 @@ class OpenAICompatibleProvider:
                             last_error = exc
 
                 if attempt < self.config.max_retries:
-                    await asyncio.sleep(min(2 ** attempt, 8))
+                    await asyncio.sleep(min(2**attempt, 8))
 
         raise ProviderError(
             "provider {} failed after {} attempts: {}".format(
@@ -112,19 +138,32 @@ class OpenAICompatibleProvider:
         )
 
     def _parse_response(self, data: Dict[str, Any], requested_model: str) -> ModelResponse:
-        content = data["choices"][0]["message"]["content"]
-        if not isinstance(content, str) or not content.strip():
+        choice = data["choices"][0]
+        if not isinstance(choice, dict):
+            raise ProviderError("provider returned an invalid completion choice")
+        choice_error = choice.get("error")
+        if choice.get("finish_reason") == "error" or choice_error:
+            raise ProviderError(
+                "provider returned a completion error: {}".format(choice_error or choice)
+            )
+        message = choice["message"]
+        if not isinstance(message, dict):
+            raise ProviderError("provider returned an invalid assistant message")
+        content = _text_content(message.get("content"))
+        has_reasoning = bool(message.get("reasoning_details") or message.get("reasoning"))
+        if not content and not has_reasoning:
             raise ProviderError("provider returned empty completion content")
         usage_data = data.get("usage") or {}
         return ModelResponse(
             provider=self.name,
             model=str(data.get("model") or requested_model),
-            content=content.strip(),
+            content=content,
             response_id=data.get("id"),
             usage=TokenUsage(
                 prompt_tokens=usage_data.get("prompt_tokens"),
                 completion_tokens=usage_data.get("completion_tokens"),
                 total_tokens=usage_data.get("total_tokens"),
             ),
+            assistant_message=message,
             raw_response=data,
         )

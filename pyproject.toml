@@ -20,7 +20,9 @@ dependencies = [
 ]
 
 [project.scripts]
+rs-agent-run = "rs_agent.applications.rs_pipeline:main"
 rs-agent-cc = "rs_agent.applications.rs_cc:main"
+rs-agent-vqa = "rs_agent.applications.rs_vqa:main"
 
 [project.optional-dependencies]
 evaluation = [

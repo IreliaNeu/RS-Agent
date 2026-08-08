@@ -81,6 +81,7 @@ class CaptionJudge:
             model=self.selector_model.model,
             temperature=self.selector_model.temperature,
             max_tokens=self.selector_model.max_tokens,
+            metadata=self.selector_model.request_options or None,
         )
         judge_choice = parse_choice(selector_response.content, options)
 
@@ -89,6 +90,7 @@ class CaptionJudge:
             model=self.evaluator_model.model,
             temperature=self.evaluator_model.temperature,
             max_tokens=self.evaluator_model.max_tokens,
+            metadata=self.evaluator_model.request_options or None,
         )
         parsed_scores = parse_scores(evaluator_response.content, options)
         selection = select_caption(candidates, parsed_scores, judge_choice)
@@ -105,4 +107,3 @@ class CaptionJudge:
             selector_response=selector_response,
             evaluator_response=evaluator_response,
         )
-

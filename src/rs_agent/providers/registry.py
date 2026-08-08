@@ -1,15 +1,15 @@
-"""Provider construction from validated model registry configuration."""
+"""Provider construction from validated provider configuration."""
 
 from __future__ import annotations
 
 from typing import Dict
 
-from rs_agent.core.config import ModelRegistryConfig
+from rs_agent.core.config import ProviderRegistryConfig
 from rs_agent.providers.openai_compatible import OpenAICompatibleProvider
 
 
 class ProviderRegistry:
-    def __init__(self, config: ModelRegistryConfig):
+    def __init__(self, config: ProviderRegistryConfig):
         self.config = config
         self._providers: Dict[str, OpenAICompatibleProvider] = {}
 
@@ -26,4 +26,3 @@ class ProviderRegistry:
     async def close(self) -> None:
         for provider in self._providers.values():
             await provider.close()
-

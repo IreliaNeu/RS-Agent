@@ -93,6 +93,7 @@ class RSCCAgent:
                 model=model.model,
                 temperature=model.temperature,
                 max_tokens=model.max_tokens,
+                metadata=model.request_options or None,
             )
             caption = clean_caption_output(response.content)
             if not caption:

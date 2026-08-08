@@ -72,6 +72,7 @@ class ModelResponse(StrictModel):
     content: str
     response_id: Optional[str] = None
     usage: TokenUsage = Field(default_factory=TokenUsage)
+    assistant_message: Dict[str, Any] = Field(default_factory=dict)
     raw_response: Dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=utc_now)
 
@@ -113,6 +114,25 @@ class VQAAnswer(StrictModel):
     error: Optional[str] = None
 
 
+class VQAAnswerCandidate(StrictModel):
+    candidate_id: str = Field(default_factory=lambda: uuid4().hex)
+    question_id: str
+    label: str
+    text: str
+    model: ModelRef
+    response: Optional[ModelResponse] = None
+    error: Optional[str] = None
+
+
+class VQAAnswerSelection(StrictModel):
+    policy: str = "highest_score_then_judge"
+    question_id: str
+    selected_label: str
+    selected_candidate_id: str
+    judge_choice: Optional[str] = None
+    scores: List[CandidateScore]
+
+
 class PipelineResult(StrictModel):
     request_id: str
     run_id: str
@@ -122,4 +142,3 @@ class PipelineResult(StrictModel):
     answers: List[VQAAnswer] = Field(default_factory=list)
     mask_artifact_id: Optional[str] = None
     created_at: datetime = Field(default_factory=utc_now)
-

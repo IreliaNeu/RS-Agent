@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import yaml
 from pydantic import Field, model_validator
@@ -36,10 +36,14 @@ class ModelConfig(StrictModel):
     model: str
     temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     max_tokens: int = Field(default=512, ge=1)
+    request_options: Dict[str, Any] = Field(default_factory=dict)
 
 
-class ModelRegistryConfig(StrictModel):
+class ProviderRegistryConfig(StrictModel):
     providers: Dict[str, ProviderConfig]
+
+
+class ModelRegistryConfig(ProviderRegistryConfig):
     caption_generators: List[ModelConfig] = Field(min_length=1)
     selector: ModelConfig
     evaluator: ModelConfig
@@ -47,7 +51,9 @@ class ModelRegistryConfig(StrictModel):
     @model_validator(mode="after")
     def validate_provider_references(self) -> "ModelRegistryConfig":
         models = list(self.caption_generators) + [self.selector, self.evaluator]
-        unknown = sorted({model.provider for model in models if model.provider not in self.providers})
+        unknown = sorted(
+            {model.provider for model in models if model.provider not in self.providers}
+        )
         if unknown:
             raise ValueError("unknown providers referenced by models: {}".format(unknown))
         return self
@@ -59,4 +65,3 @@ def load_model_registry(path: Path) -> ModelRegistryConfig:
     if not isinstance(data, dict):
         raise ValueError("model registry must be a YAML object")
     return ModelRegistryConfig.model_validate(data)
-
