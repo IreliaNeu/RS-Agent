@@ -72,6 +72,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--split", default="test", choices=("train", "val", "test"))
     parser.add_argument("--limit", type=int, default=100)
     parser.add_argument("--device", default="cuda:0")
+    parser.add_argument(
+        "--mask-output-dir",
+        type=Path,
+        help="Optionally save the MCI model's 3-class predicted masks",
+    )
     return parser
 
 
@@ -81,6 +86,9 @@ def main() -> int:
     dataset_root = args.dataset_root.resolve()
     checkpoint = args.checkpoint.resolve()
     output = args.output.resolve()
+    mask_output_dir = (
+        args.mask_output_dir.resolve() if args.mask_output_dir is not None else None
+    )
     list_dir = source_root / "data" / "LEVIR_MCI"
     names = read_names(list_dir / "{}.txt".format(args.split), args.limit)
     vocabulary = json.loads((list_dir / "vocab.json").read_text(encoding="utf-8"))
@@ -139,6 +147,8 @@ def main() -> int:
         return torch.from_numpy(image).unsqueeze(0).to(args.device)
 
     output.parent.mkdir(parents=True, exist_ok=True)
+    if mask_output_dir is not None:
+        mask_output_dir.mkdir(parents=True, exist_ok=True)
     records = 0
     empty_captions = 0
     with output.open("x", encoding="utf-8", newline="\n") as handle:
@@ -149,10 +159,15 @@ def main() -> int:
                 tensor_a = preprocess(image_a)
                 tensor_b = preprocess(image_b)
                 features_a, features_b = models[0](tensor_a, tensor_b)
-                features_a, features_b, _ = models[1](features_a, features_b)
+                features_a, features_b, segmentation = models[1](features_a, features_b)
                 sequence = models[2].sample(features_a, features_b, k=1)
                 caption = decode_caption(sequence, vocabulary)
                 empty_captions += int(not caption)
+                mask_path = None
+                if mask_output_dir is not None:
+                    mask_path = mask_output_dir / filename
+                    mask = segmentation.argmax(dim=1)[0].to(torch.uint8).cpu().numpy()
+                    imageio.imwrite(mask_path, mask)
                 record = {
                     "item_id": Path(filename).stem,
                     "original_caption": caption,
@@ -162,6 +177,7 @@ def main() -> int:
                     "image_b": str(image_b),
                     "checkpoint_sha256": checkpoint_hash,
                     "sample_index": index,
+                    "predicted_mask": str(mask_path) if mask_path is not None else None,
                 }
                 handle.write(json.dumps(record, ensure_ascii=False) + "\n")
                 handle.flush()
@@ -181,6 +197,9 @@ def main() -> int:
         "torch_version": torch.__version__,
         "cuda_version": torch.version.cuda,
         "device": torch.cuda.get_device_name(torch.device(args.device)),
+        "mask_output_dir": (
+            str(mask_output_dir) if mask_output_dir is not None else None
+        ),
     }
     manifest_path = output.with_suffix(output.suffix + ".manifest.json")
     manifest_path.write_text(

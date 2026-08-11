@@ -7,6 +7,7 @@ from PIL import Image
 from rs_agent.core.artifacts import JsonArtifactStore
 from rs_agent.core.schemas import ImagePair, ModelResponse
 from rs_agent.domains.remote_sensing.config import RSCCExperimentConfig
+from rs_agent.domains.remote_sensing.mask_evidence import MaskEvidenceRequest
 from rs_agent.domains.remote_sensing.vqa_config import RSVQAExperimentConfig
 from rs_agent.orchestration.agent_pipeline import RSAgentPipeline, RSAgentRequest
 
@@ -94,6 +95,8 @@ def test_complete_pipeline_bridges_only_selected_c_star(tmp_path: Path) -> None:
     after = tmp_path / "after.png"
     Image.new("RGB", (4, 4), color=(10, 20, 30)).save(before)
     Image.new("RGB", (4, 4), color=(30, 20, 10)).save(after)
+    mask = tmp_path / "mask.png"
+    Image.new("L", (4, 4), color=0).save(mask)
     provider = FakeProvider()
     registry = FakeRegistry(provider)
     pipeline = RSAgentPipeline(
@@ -109,16 +112,21 @@ def test_complete_pipeline_bridges_only_selected_c_star(tmp_path: Path) -> None:
                 item_id="pair-1",
                 original_caption="A building appeared.",
                 images=ImagePair(before=before, after=after),
+                mask=MaskEvidenceRequest(path=mask),
             ),
             "complete-test",
         )
     )
     assert result.knowledge.c_star == "CC caption from cc-b"
     assert result.vqa.selected_answers[0].answer == "VQA answer from vqa-b"
-    assert len(list((tmp_path / "artifacts").rglob("*.json"))) == 7
+    assert result.mask is not None
+    assert result.mask.summary.has_change is False
+    assert result.evidence.bundle.has_conflict is True
+    assert len(list((tmp_path / "artifacts").rglob("*.json"))) == 10
 
     vqa_call = next(call for call in provider.calls if call["model"] == "vqa-a")
     prompt = json.dumps(vqa_call["messages"])
     assert "CC caption from cc-b" in prompt
     assert "CC caption from cc-a" not in prompt
     assert prompt.count("data:image/png;base64,") == 2
+    assert str(mask) not in prompt
