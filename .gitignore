@@ -9,7 +9,9 @@ build/
 dist/
 *.egg-info/
 /artifacts/
+/batch-state/
 /cache/
+/exports/
 /data/
 /datasets/
 /checkpoints/

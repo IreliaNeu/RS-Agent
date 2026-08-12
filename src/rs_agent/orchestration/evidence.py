@@ -49,7 +49,8 @@ class EvidenceBundle(StrictModel):
 
 
 _NO_CHANGE_PATTERNS = (
-    r"\bno\s+(?:significant\s+)?changes?\b",
+    r"\bno\s+(?:(?:significant|discernible|meaningful|notable|visible|apparent|major)\s+)?changes?\b",
+    r"\bwithout\s+(?:any\s+)?(?:significant\s+)?changes?\b",
     r"\bunchanged\b",
     r"\bsame\s+as\s+before\b",
     r"\bno\s+difference\b",

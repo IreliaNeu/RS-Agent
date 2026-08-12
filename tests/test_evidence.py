@@ -27,6 +27,10 @@ def no_change_mask() -> MaskEvidenceSummary:
 
 def test_no_change_phrase_takes_priority_over_change_token() -> None:
     assert classify_statement("There is no significant change.") == EvidenceStance.NO_CHANGE
+    assert (
+        classify_statement("The scene exhibits no discernible changes.")
+        == EvidenceStance.NO_CHANGE
+    )
     assert classify_statement("A new road appeared.") == EvidenceStance.CHANGE
     assert classify_statement("Several buildings are visible.") == EvidenceStance.UNCERTAIN
 

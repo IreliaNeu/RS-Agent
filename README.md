@@ -15,8 +15,11 @@ This project is independently maintained and is based in part on [Change-Agent](
 - An auditable Main Agent planner for caption, VQA, combined, and no-Knowledge-Bridge ablation paths.
 - Optional single-channel mask evidence with class statistics, connected components, and bounding boxes.
 - A domain-neutral Evidence Bundle that records conservative cross-source conflicts without overriding model outputs.
+- Resumable JSONL batch experiments with bounded concurrency, atomic state, retry controls, and opt-in verified result caching.
+- Content-derived experiment identities covering inputs, image/mask content, configs, source code, runtime versions, and run options.
+- Credential-safe provider preflight with optional `/models` endpoint and model-visibility checks.
+- Checksum-verified exports for per-item results, complete candidate ledgers, Judge scores, failures, and model summaries.
 - OpenRouter and SiliconFlow through one OpenAI-compatible provider interface.
-- Per-model request options, bounded retries, preserved OpenRouter reasoning details, and nested error detection.
 - Write-once JSON artifacts with SHA-256 integrity verification.
 - Reproducible Change-Agent caption and three-class mask inference for 100 LEVIR-MCI test pairs.
 
@@ -74,9 +77,20 @@ Operational profiles use models reachable from the current server and exist only
 - `configs/rs_cc.smoke.yaml`
 - `configs/rs_vqa.smoke.yaml`
 
-Operational outputs must not be reported as paper reproduction results. Paper profiles never silently substitute a blocked or retired model. Credentials remain in `.env` and never belong in YAML, source, artifacts, or Git history.
+Operational outputs must not be reported as paper reproduction results. Paper profiles never silently substitute a blocked or retired model. Credentials remain in `.env` and never belong in YAML, source, artifacts, state, cache indexes, or Git history.
 
-## End-to-End Usage
+Check credentials and configuration without network requests:
+
+```bash
+rs-agent-preflight \
+  --cc-config configs/rs_cc.smoke.yaml \
+  --vqa-config configs/rs_vqa.smoke.yaml \
+  --env-file .env
+```
+
+Add `--network` to query each provider's `/models` endpoint and report configured model visibility. This check does not print API keys and does not send inference prompts.
+
+## Single-Item Usage
 
 Validate a VQA run without the Knowledge Bridge and without API calls:
 
@@ -92,24 +106,66 @@ rs-agent-run \
   --dry-run
 ```
 
-Run caption enrichment with an optional predicted mask:
+Use `--question` one or more times for user questions. If no question is supplied to a VQA task, the configured preset question set is used. The individual stages remain available as `rs-agent-cc` and `rs-agent-vqa`.
+
+## Batch Experiments
+
+The batch input is JSONL with one item per line:
+
+```json
+{"item_id":"test_000001","original_caption":"the scene is the same as before","image_a":"/path/A.png","image_b":"/path/B.png","predicted_mask":"/path/mask.png"}
+```
+
+Validate all input files, both configs, and the experiment identity without API calls:
 
 ```bash
-rs-agent-run \
+rs-agent-batch \
+  --input /path/to/input.jsonl \
+  --batch-id levir-mci-smoke \
+  --cc-config configs/rs_cc.smoke.yaml \
+  --vqa-config configs/rs_vqa.smoke.yaml \
+  --task-type combined \
+  --dry-run
+```
+
+Run or resume a batch:
+
+```bash
+rs-agent-batch \
+  --input /path/to/input.jsonl \
+  --batch-id levir-mci-smoke \
   --cc-config configs/rs_cc.smoke.yaml \
   --vqa-config configs/rs_vqa.smoke.yaml \
   --env-file .env \
-  --image-a /path/to/before.png \
-  --image-b /path/to/after.png \
-  --caption "a new road appears in the middle of the scene" \
-  --task-type caption \
-  --mask /path/to/predicted-mask.png \
-  --mask-source predicted \
-  --item-id test_000068 \
-  --artifact-dir artifacts
+  --task-type combined \
+  --concurrency 2 \
+  --artifact-dir /path/to/artifacts \
+  --state-dir /path/to/batch-state \
+  --cache-dir /path/to/cache
 ```
 
-Use `--question` one or more times for user questions. If no question is supplied to a VQA task, the configured preset question set is used. The individual stages remain available as `rs-agent-cc` and `rs-agent-vqa`.
+Reuse the exact command and `batch-id` to resume pending items. Use `--retry-failed` to retry failed items. `--max-items N` intentionally stops after at most `N` eligible items and leaves the batch in `partial` state.
+
+Cross-batch caching is disabled unless `--cache-dir` is supplied. A cache hit requires the same sample content, captions/questions, configs, source tree, runtime versions, and inference options, plus a checksum-valid result artifact. Paper experiments should preserve the generated state and identity alongside their exports.
+
+## Evaluation Exports
+
+```bash
+rs-agent-export \
+  --state /path/to/batch-state/levir-mci-smoke/state.json \
+  --output-dir /path/to/exports/levir-mci-smoke
+```
+
+Exports are created only in an empty directory and include:
+
+- `summary.json`: batch status, conflicts, caption-mask consistency, and generation failure counts.
+- `experiment_identity.json`: exact input/config/source/runtime identity.
+- `items.jsonl`: selected captions, answers, masks, evidence consensus, and result provenance.
+- `failures.jsonl`: pending or failed batch items and errors.
+- `caption_scores.csv` and `vqa_scores.csv`: every configured candidate, including failed generations with empty scores and preserved errors.
+- `model_summary.csv`: mean Judge score, population standard deviation, selection counts, and generation success/failure counts by model.
+
+Every referenced artifact is checksum-verified before export. A model that failed to generate is kept in the ledger and is never treated as a score of zero.
 
 ## Change-Agent Batch Inference
 
@@ -130,10 +186,11 @@ The mask output is the `argmax` of the MCI model's three-class logits: backgroun
 ## Repository Layout
 
 ```text
-src/rs_agent/applications/    CLI and later web entry points
+src/rs_agent/applications/    Single-item, batch, preflight, and export CLIs
 src/rs_agent/core/            Typed contracts, configuration, and artifacts
-src/rs_agent/providers/       External model API adapters
-src/rs_agent/evaluation/      LLM-as-Judge evaluation and parsing
+src/rs_agent/experiments/     Batch identity, state, cache, and orchestration
+src/rs_agent/providers/       External model adapters and provider preflight
+src/rs_agent/evaluation/      LLM-as-Judge logic and verified result exports
 src/rs_agent/domains/         Domain-specific agents, prompts, and adapters
 src/rs_agent/orchestration/   Main Agent planning, evidence, and pipeline composition
 scripts/                      Reproducible data-generation utilities
@@ -144,18 +201,18 @@ docs/progress/                Chinese implementation records
 
 ## Reproducibility Rules
 
-- Paper runs do not use cross-sample memory.
+- Paper runs do not use cross-sample semantic memory.
 - Every candidate, raw response, score, selection, error, and model ID is retained.
 - Paper and operational profiles are never mixed in one result identity.
 - VQA image payloads are not persisted; image hashes are recorded instead.
 - Ground-truth masks must be labeled as `ground_truth` and are not inference evidence.
-- Artifacts are write-once and integrity checked.
-- API credentials never enter Git history or experiment artifacts.
+- Scientific artifacts are write-once and integrity checked; mutable batch state is stored separately and updated atomically.
+- API credentials never enter Git history, experiment artifacts, state, exports, or cache indexes.
 
 ## Next Milestones
 
-- Add batch resume, cache, provider preflight, and evaluation exports.
-- Add quantitative caption/VQA/mask consistency reports while retaining the existing Judge logic.
+- Add larger paper-profile pilot runs and dataset-level metrics against available references.
+- Freeze paper baseline schemas and add explicit baseline/operational/enhancement run labels.
 - Design an optional, separately reported synthesis/arbitration Agent after the paper baseline is frozen.
 - Integrate the Streamlit demo after the experimental evidence pipeline is stable.
 
