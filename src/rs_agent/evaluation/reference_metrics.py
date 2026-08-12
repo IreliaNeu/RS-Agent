@@ -7,7 +7,7 @@ import math
 import re
 from collections import Counter
 from pathlib import Path
-from typing import Dict, Iterable, List, Sequence, Tuple
+from typing import Dict, Iterable, List, Sequence
 
 from pydantic import Field
 

@@ -2,9 +2,9 @@ import csv
 import json
 from pathlib import Path
 
-from rs_agent.evaluation.batch_export import export_batch
-
 from test_batch_export import build_state
+
+from rs_agent.evaluation.batch_export import export_batch
 
 
 def test_export_adds_reference_metrics_and_request_telemetry(tmp_path: Path) -> None:
