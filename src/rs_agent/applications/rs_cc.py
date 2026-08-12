@@ -82,6 +82,11 @@ def dry_run_summary(
         "profile": config.profile,
         "protocol": config.protocol.model_dump(mode="json"),
         "prompt_profile": config.prompt_profile.value,
+        "input_mode": (
+            "capability_aware_original_pair_and_caption"
+            if config.requires_images
+            else "text_only_original_caption"
+        ),
         "record_count": len(records),
         "minimum_successful_candidates": config.minimum_successful_candidates,
         "caption_generators": [
