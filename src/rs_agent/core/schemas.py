@@ -71,6 +71,7 @@ class RequestTelemetry(StrictModel):
     latency_ms: float = Field(default=0.0, ge=0.0)
     status_code: Optional[int] = None
     attempt_status_codes: List[int] = Field(default_factory=list)
+    attempt_outcomes: List[str] = Field(default_factory=list)
 
 
 class ModelResponse(StrictModel):

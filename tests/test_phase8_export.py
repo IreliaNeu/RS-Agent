@@ -29,6 +29,8 @@ def test_export_adds_reference_metrics_and_request_telemetry(tmp_path: Path) -> 
     assert summary["caption_reference_matched_items"] == 1
     assert summary["caption_reference_metrics"]["bleu_1"] == 1.0
     assert summary["caption_references_sha256"]
+    assert summary["caption_reference_metrics_version"] == "levir_mci_caption_metrics_v1.1"
+    assert len(summary["export_source_sha256"]) == 64
     with (output / "request_telemetry.csv").open("r", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
     assert {row["role"] for row in rows} == {"generator", "selector", "evaluator"}

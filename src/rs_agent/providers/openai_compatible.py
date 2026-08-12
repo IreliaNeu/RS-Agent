@@ -80,12 +80,14 @@ class OpenAICompatibleProvider:
         started: float,
         status_code: Optional[int],
         attempt_status_codes: List[int],
+        attempt_outcomes: List[str],
     ) -> RequestTelemetry:
         return RequestTelemetry(
             attempts=attempts,
             latency_ms=round((perf_counter() - started) * 1000, 3),
             status_code=status_code,
             attempt_status_codes=list(attempt_status_codes),
+            attempt_outcomes=list(attempt_outcomes),
         )
 
     async def complete(
@@ -120,6 +122,7 @@ class OpenAICompatibleProvider:
         attempts = 0
         started = perf_counter()
         attempt_status_codes: List[int] = []
+        attempt_outcomes: List[str] = []
         final_status: Optional[int] = None
         async with self._semaphore:
             for attempt in range(self.config.max_retries + 1):
@@ -131,10 +134,12 @@ class OpenAICompatibleProvider:
                         json=payload,
                     )
                 except httpx.HTTPError as exc:
+                    attempt_outcomes.append("transport:{}".format(type(exc).__name__))
                     last_error = exc
                 else:
                     final_status = response.status_code
                     attempt_status_codes.append(response.status_code)
+                    attempt_outcomes.append("http:{}".format(response.status_code))
                     if response.status_code >= 400:
                         message = "HTTP {}: {}".format(
                             response.status_code, response.text[:300]
@@ -147,6 +152,7 @@ class OpenAICompatibleProvider:
                                     started,
                                     final_status,
                                     attempt_status_codes,
+                                    attempt_outcomes,
                                 ),
                             )
                         last_error = ProviderError(message)
@@ -162,6 +168,7 @@ class OpenAICompatibleProvider:
                                         started,
                                         final_status,
                                         attempt_status_codes,
+                                        attempt_outcomes,
                                     )
                                 }
                             )
@@ -182,7 +189,11 @@ class OpenAICompatibleProvider:
                 self.name, attempts, last_error
             ),
             telemetry=self._telemetry(
-                attempts, started, final_status, attempt_status_codes
+                attempts,
+                started,
+                final_status,
+                attempt_status_codes,
+                attempt_outcomes,
             ),
         )
 

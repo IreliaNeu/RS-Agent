@@ -14,6 +14,8 @@ from pydantic import Field
 from rs_agent.core.schemas import StrictModel
 
 TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
+REFERENCE_METRICS_VERSION = "levir_mci_caption_metrics_v1.1"
+
 NO_CHANGE_PATTERNS = (
     "no change",
     "no difference",

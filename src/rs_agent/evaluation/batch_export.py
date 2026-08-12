@@ -12,12 +12,13 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from rs_agent.core.artifacts import ArtifactEnvelope, JsonArtifactStore
 from rs_agent.evaluation.reference_metrics import (
+    REFERENCE_METRICS_VERSION,
     CaptionMetricRecord,
     evaluate_caption,
     load_reference_manifest,
     mean_caption_metrics,
 )
-from rs_agent.experiments.identity import sha256_file
+from rs_agent.experiments.identity import sha256_file, source_tree_sha256
 from rs_agent.experiments.state import BatchRunState, ItemStatus
 
 
@@ -59,11 +60,13 @@ def _request_fields(
     usage = response.get("usage") or {}
     telemetry = response.get("telemetry") or fallback_telemetry or {}
     status_codes = telemetry.get("attempt_status_codes") or []
+    outcomes = telemetry.get("attempt_outcomes") or []
     return {
         "attempts": int(telemetry.get("attempts", 1)),
         "latency_ms": float(telemetry.get("latency_ms", 0.0)),
         "status_code": telemetry.get("status_code"),
         "attempt_status_codes": json.dumps(status_codes, separators=(",", ":")),
+        "attempt_outcomes": json.dumps(outcomes, separators=(",", ":")),
         "prompt_tokens": usage.get("prompt_tokens"),
         "completion_tokens": usage.get("completion_tokens"),
         "total_tokens": usage.get("total_tokens"),
@@ -479,6 +482,8 @@ def export_batch(
         "caption_reference_matched_items": len(metric_records),
         "caption_reference_missing_items": missing_references,
         "caption_references_sha256": references_sha256,
+        "caption_reference_metrics_version": REFERENCE_METRICS_VERSION,
+        "export_source_sha256": source_tree_sha256(),
         "metric_definitions": {
             "primary": "LLM-as-Judge score and highest_score_then_judge selection",
             "bleu": "dependency-light unsmoothed sentence BLEU averaged over items",
@@ -509,6 +514,7 @@ def export_batch(
         "latency_ms",
         "status_code",
         "attempt_status_codes",
+        "attempt_outcomes",
         "prompt_tokens",
         "completion_tokens",
         "total_tokens",
@@ -540,6 +546,7 @@ def export_batch(
         "latency_ms",
         "status_code",
         "attempt_status_codes",
+        "attempt_outcomes",
         "prompt_tokens",
         "completion_tokens",
         "total_tokens",

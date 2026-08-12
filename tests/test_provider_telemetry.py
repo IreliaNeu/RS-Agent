@@ -44,5 +44,6 @@ def test_provider_records_retry_statuses_and_usage(monkeypatch) -> None:
     assert response.telemetry.attempts == 2
     assert response.telemetry.status_code == 200
     assert response.telemetry.attempt_status_codes == [503, 200]
+    assert response.telemetry.attempt_outcomes == ["http:503", "http:200"]
     assert response.telemetry.latency_ms >= 0
     assert response.usage.total_tokens == 5
