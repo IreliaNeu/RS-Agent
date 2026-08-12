@@ -6,7 +6,7 @@ This project is independently maintained and is based in part on [Change-Agent](
 
 ## Implemented
 
-- A text-only RS-CC stage that accepts one Change-Agent caption per image pair.
+- A paper-aligned text-only RS-CC baseline plus a capability-aware enhancement where selected VLMs can read the original image pair and reference caption.
 - Five concurrent RS-CC candidates, independent selector and evaluator roles, and deterministic `C*` selection.
 - A separate five-model RS-VQA stage that reads only the original before/after images.
 - Preset, user, and hybrid question resolution for change summary, presence, structure, buildings, roads, vegetation, water, and location.
@@ -18,7 +18,8 @@ This project is independently maintained and is based in part on [Change-Agent](
 - Resumable JSONL batch experiments with bounded concurrency, atomic state, retry controls, and opt-in verified result caching.
 - Content-derived experiment identities covering inputs, image/mask content, configs, source code, runtime versions, and run options.
 - Credential-safe provider preflight with optional `/models` endpoint and model-visibility checks.
-- Checksum-verified exports for per-item results, complete candidate ledgers, Judge scores, failures, and model summaries.
+- Checksum-verified exports for per-item results, complete candidate ledgers, Judge scores, LEVIR-MCI reference metrics, request telemetry, failures, and model summaries.
+- Explicit `paper`, `operational`, and `enhancement` experiment protocols embedded in configs and artifacts.
 - OpenRouter and SiliconFlow through one OpenAI-compatible provider interface.
 - Write-once JSON artifacts with SHA-256 integrity verification.
 - Reproducible Change-Agent caption and three-class mask inference for 100 LEVIR-MCI test pairs.
@@ -40,7 +41,7 @@ The complete path is:
 ```text
 Main Agent plan
   -> original Change-Agent caption
-  -> five text-only RS-CC candidates
+  -> five RS-CC candidates (text-only in the paper baseline)
   -> selector + evaluator -> selected C*
   -> optional Knowledge Bridge
   -> original before/after images + question + optional C*
@@ -50,7 +51,7 @@ Main Agent plan
   -> Evidence Bundle + immutable result artifacts
 ```
 
-RS-CC never receives images. RS-VQA visual messages contain only the original bi-temporal images. Masks are parsed separately and never enter VLM messages. `C*` is auxiliary text and may be corrected when it conflicts with visible evidence.
+Paper-track RS-CC never receives images. The separately labeled enhancement profile may mix text-only candidates with image-text candidates; only models configured with `input_mode: image_text` receive the original image pair. RS-VQA visual messages contain only the original bi-temporal images. Masks are parsed separately and never enter VLM messages. `C*` is auxiliary text and may be corrected when it conflicts with visible evidence. Image payloads are never persisted; artifacts retain only image hashes and actual input modes.
 
 The paper describes the Main Agent as a task coordinator, not as an additional LLM answer-fusion model. Task routing and `C*` transfer are therefore part of the paper-aligned baseline. The deterministic Evidence Bundle is explicitly marked as an engineering enhancement; it records conflicts but does not silently create a new experimental verdict.
 
@@ -76,6 +77,11 @@ Operational profiles use models reachable from the current server and exist only
 
 - `configs/rs_cc.smoke.yaml`
 - `configs/rs_vqa.smoke.yaml`
+
+Adapted profiles use currently available models and keep substitutions explicit:
+
+- `configs/rs_cc.adapted.yaml`: enhancement profile with two text-only and three image-text candidates.
+- `configs/rs_vqa.adapted.yaml`: operational profile with five currently available multimodal models.
 
 Operational outputs must not be reported as paper reproduction results. Paper profiles never silently substitute a blocked or retired model. Credentials remain in `.env` and never belong in YAML, source, artifacts, state, cache indexes, or Git history.
 
@@ -153,19 +159,28 @@ Cross-batch caching is disabled unless `--cache-dir` is supplied. A cache hit re
 ```bash
 rs-agent-export \
   --state /path/to/batch-state/levir-mci-smoke/state.json \
-  --output-dir /path/to/exports/levir-mci-smoke
+  --output-dir /path/to/exports/levir-mci-smoke \
+  --references /path/to/levir_mci_test_references.jsonl
 ```
 
 Exports are created only in an empty directory and include:
 
-- `summary.json`: batch status, conflicts, caption-mask consistency, and generation failure counts.
+- `summary.json`: batch status, conflicts, caption-mask consistency, generation failures, supplementary caption metrics, metric version, and export-source hash.
 - `experiment_identity.json`: exact input/config/source/runtime identity.
 - `items.jsonl`: selected captions, answers, masks, evidence consensus, and result provenance.
 - `failures.jsonl`: pending or failed batch items and errors.
 - `caption_scores.csv` and `vqa_scores.csv`: every configured candidate, including failed generations with empty scores and preserved errors.
-- `model_summary.csv`: mean Judge score, population standard deviation, selection counts, and generation success/failure counts by model.
+- `model_summary.csv`: Judge statistics, selection counts, success rate, retries, latency, and token use by stage, role, model, and input mode.
+- `request_telemetry.csv`: every generator and Judge request with outcomes, HTTP statuses, retries, latency, and available token usage.
+- `caption_reference_metrics.csv`: selected-caption BLEU-1, unsmoothed BLEU-4, ROUGE-L, and change-flag agreement against normalized LEVIR-MCI references.
 
-Every referenced artifact is checksum-verified before export. A model that failed to generate is kept in the ledger and is never treated as a score of zero.
+Every referenced artifact is checksum-verified before export. A model that failed to generate is kept in the ledger and is never treated as a score of zero. LLM-as-Judge remains the primary method; reference metrics are supplementary and their definitions are versioned.
+
+## Phase 8 Pilot
+
+A balanced 10-item LEVIR-MCI combined pilot (five change and five no-change samples) completed with 10/10 successful items, 50/50 RS-CC generations, and 50/50 RS-VQA generations. Across RS-CC candidates, text-only inputs averaged 8.45 Judge points and were selected 8/10 times; image-text inputs averaged 4.50 and were selected 2/10 times. The image-text models were especially vulnerable to treating seasonal appearance as change, so this capability remains an enhancement and ablation rather than a baseline replacement.
+
+The selected captions achieved BLEU-1 0.3897, unsmoothed sentence BLEU-4 0.0141, ROUGE-L 0.3190, and change-flag accuracy 1.0 on this small pilot. These numbers validate the evaluation path; they are not paper-scale results.
 
 ## Change-Agent Batch Inference
 
@@ -203,7 +218,7 @@ docs/progress/                Chinese implementation records
 
 - Paper runs do not use cross-sample semantic memory.
 - Every candidate, raw response, score, selection, error, and model ID is retained.
-- Paper and operational profiles are never mixed in one result identity.
+- Paper, operational, and enhancement profiles are explicitly labeled and never silently mixed in one result identity.
 - VQA image payloads are not persisted; image hashes are recorded instead.
 - Ground-truth masks must be labeled as `ground_truth` and are not inference evidence.
 - Scientific artifacts are write-once and integrity checked; mutable batch state is stored separately and updated atomically.
