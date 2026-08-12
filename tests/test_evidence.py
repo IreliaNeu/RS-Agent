@@ -31,6 +31,10 @@ def test_no_change_phrase_takes_priority_over_change_token() -> None:
         classify_statement("The scene exhibits no discernible changes.")
         == EvidenceStance.NO_CHANGE
     )
+    assert (
+        classify_statement("There is no meaningful structural change between the images.")
+        == EvidenceStance.NO_CHANGE
+    )
     assert classify_statement("A new road appeared.") == EvidenceStance.CHANGE
     assert classify_statement("Several buildings are visible.") == EvidenceStance.UNCERTAIN
 
