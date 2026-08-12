@@ -101,7 +101,7 @@ def clean_caption_output(content: str) -> str:
     value = re.sub(r"^```(?:text|markdown)?\s*", "", value, flags=re.IGNORECASE)
     value = re.sub(r"\s*```$", "", value)
     value = re.sub(
-        r"^(?:final caption|refined caption|caption)\s*:\s*",
+        r"^(?:new caption|final caption|refined caption|caption)\s*:\s*",
         "",
         value,
         flags=re.IGNORECASE,

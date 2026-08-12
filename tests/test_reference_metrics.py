@@ -26,6 +26,8 @@ def test_exact_reference_has_perfect_caption_metrics() -> None:
 
 def test_no_change_classifier_and_short_bleu_definition() -> None:
     assert caption_change_flag("There is no difference between the two images.") == 0
+    assert caption_change_flag("The scene remains unchanged from before.") == 0
+    assert caption_change_flag("There are no discernible differences.") == 0
     assert caption_change_flag("A new road was constructed.") == 1
     assert sentence_bleu("no change", ["no change"], 4) == 0.0
 

@@ -20,6 +20,11 @@ NO_CHANGE_PATTERNS = (
     "same as before",
     "scenes seem identical",
     "nothing has changed",
+    "unchanged",
+    "no observable difference",
+    "no discernible difference",
+    "remains the same",
+    "without change",
 )
 
 
