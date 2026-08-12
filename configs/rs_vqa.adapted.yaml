@@ -1,10 +1,10 @@
-profile: icassp_rs_vqa_paper_v1
+profile: rs_vqa_operational_adapted_v1
 
 protocol:
-  track: paper
+  track: operational
   baseline_id: icassp_rs_vqa_paper_v1
-  method_variant: paper_image_pair_vqa
-  substitutes_paper_models: false
+  method_variant: available_multimodal_models_2026_08
+  substitutes_paper_models: true
 
 providers:
   openrouter:
@@ -12,7 +12,7 @@ providers:
     base_url: https://openrouter.ai/api/v1
     api_key_env: OPENROUTER_API_KEY
     timeout_seconds: 90
-    max_retries: 3
+    max_retries: 2
     max_concurrency: 5
     headers:
       HTTP-Referer: https://github.com/IreliaNeu/RS-Agent
@@ -22,18 +22,18 @@ providers:
     base_url: https://api.siliconflow.cn/v1
     api_key_env: SILICONFLOW_API_KEY
     timeout_seconds: 90
-    max_retries: 3
+    max_retries: 2
     max_concurrency: 2
 
 answer_models:
-  - name: MiniMax-01
+  - name: Qwen3-VL-8B-Instruct
     provider: openrouter
-    model: minimax/minimax-01
+    model: qwen/qwen3-vl-8b-instruct
     temperature: 0.0
     max_tokens: 256
-  - name: GPT-4o-mini
+  - name: Gemma-3-27B-IT
     provider: openrouter
-    model: openai/gpt-4o-mini
+    model: google/gemma-3-27b-it
     temperature: 0.0
     max_tokens: 256
   - name: LLaMA-4-Maverick
@@ -41,33 +41,31 @@ answer_models:
     model: meta-llama/llama-4-maverick
     temperature: 0.0
     max_tokens: 256
-  - name: Qwen2.5-VL-32B-Instruct
+  - name: Qwen3-VL-30B-A3B-Instruct
     provider: siliconflow
-    model: Qwen/Qwen2.5-VL-32B-Instruct
+    model: Qwen/Qwen3-VL-30B-A3B-Instruct
     temperature: 0.0
     max_tokens: 256
-  - name: Mistral-Small-3.2-24B-Instruct
+  - name: Mistral-Small-3.2
     provider: openrouter
     model: mistralai/mistral-small-3.2-24b-instruct
     temperature: 0.0
     max_tokens: 256
 
 selector:
-  name: GPT-4o-Selector
-  provider: openrouter
-  model: openai/gpt-4o
+  name: Qwen3-VL-32B-Selector
+  provider: siliconflow
+  model: Qwen/Qwen3-VL-32B-Instruct
   temperature: 0.0
   max_tokens: 16
 
 evaluator:
-  name: GPT-4o-Evaluator
-  provider: openrouter
-  model: openai/gpt-4o
+  name: Qwen3-VL-32B-Evaluator
+  provider: siliconflow
+  model: Qwen/Qwen3-VL-32B-Instruct
   temperature: 0.0
   max_tokens: 256
 
 default_template_ids:
   - change_summary
-  - change_presence
-  - spatial_location
-minimum_successful_answers_per_question: 5
+minimum_successful_answers_per_question: 4

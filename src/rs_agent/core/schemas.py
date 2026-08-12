@@ -66,12 +66,20 @@ class TokenUsage(StrictModel):
     total_tokens: Optional[int] = None
 
 
+class RequestTelemetry(StrictModel):
+    attempts: int = Field(default=1, ge=1)
+    latency_ms: float = Field(default=0.0, ge=0.0)
+    status_code: Optional[int] = None
+    attempt_status_codes: List[int] = Field(default_factory=list)
+
+
 class ModelResponse(StrictModel):
     provider: str
     model: str
     content: str
     response_id: Optional[str] = None
     usage: TokenUsage = Field(default_factory=TokenUsage)
+    telemetry: RequestTelemetry = Field(default_factory=RequestTelemetry)
     assistant_message: Dict[str, Any] = Field(default_factory=dict)
     raw_response: Dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=utc_now)
@@ -81,8 +89,10 @@ class CaptionCandidate(StrictModel):
     candidate_id: str = Field(default_factory=lambda: uuid4().hex)
     label: str
     model: ModelRef
+    input_mode: str = "text_only"
     text: str
     response: Optional[ModelResponse] = None
+    telemetry: Optional[RequestTelemetry] = None
     error: Optional[str] = None
 
 
@@ -121,6 +131,7 @@ class VQAAnswerCandidate(StrictModel):
     text: str
     model: ModelRef
     response: Optional[ModelResponse] = None
+    telemetry: Optional[RequestTelemetry] = None
     error: Optional[str] = None
 
 

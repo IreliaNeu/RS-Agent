@@ -13,6 +13,7 @@ from rs_agent.core.config import ModelConfig
 from rs_agent.core.schemas import (
     ImagePair,
     ModelRef,
+    RequestTelemetry,
     StrictModel,
     VQAAnswerCandidate,
     VQAQuestion,
@@ -21,7 +22,8 @@ from rs_agent.core.schemas import (
 from rs_agent.domains.remote_sensing.image_inputs import EncodedImagePair
 from rs_agent.domains.remote_sensing.vqa_config import RSVQAExperimentConfig
 from rs_agent.domains.remote_sensing.vqa_prompts import answer_messages
-from rs_agent.providers.base import ChatMessage
+from rs_agent.experiments.protocol import ExperimentProtocol
+from rs_agent.providers.base import ChatMessage, ProviderError
 from rs_agent.providers.registry import ProviderRegistry
 
 
@@ -37,6 +39,7 @@ class VQAGenerationBatch(StrictModel):
     request_id: str
     item_id: str
     profile: str
+    protocol: ExperimentProtocol
     questions: List[VQAQuestion]
     candidates: List[VQAAnswerCandidate]
     errors: Dict[str, str] = Field(default_factory=dict)
@@ -79,6 +82,7 @@ class RSVQAAgent:
             request_id=request.request_id,
             item_id=request.item_id,
             profile=self.config.profile,
+            protocol=self.config.protocol,
             questions=questions,
             candidates=candidates,
             errors=errors,
@@ -117,12 +121,19 @@ class RSVQAAgent:
                 text=text,
                 model=model_ref,
                 response=response,
+                telemetry=response.telemetry,
             )
         except Exception as exc:
+            telemetry = (
+                exc.telemetry
+                if isinstance(exc, ProviderError)
+                else RequestTelemetry()
+            )
             return VQAAnswerCandidate(
                 question_id=question.question_id,
                 label=label,
                 text="",
                 model=model_ref,
+                telemetry=telemetry,
                 error="{}: {}".format(type(exc).__name__, exc),
             )

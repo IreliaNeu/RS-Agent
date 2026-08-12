@@ -1,16 +1,18 @@
-"""Versioned prompts for the paper RS-CC caption enrichment task."""
+"""Versioned prompts for text-only and image-grounded RS-CC enrichment."""
 
 from __future__ import annotations
 
 import json
 import re
-from typing import List
+from typing import Dict, List
 
 from rs_agent.domains.remote_sensing.config import CaptionPromptProfile
+from rs_agent.domains.remote_sensing.image_inputs import EncodedImagePair
 from rs_agent.providers.base import ChatMessage
 
 BASE_PROMPT_VERSION = "rs_cc_enrichment_base_v1"
 COT_PROMPT_VERSION = "rs_cc_enrichment_cot_no_background_v1"
+IMAGE_TEXT_PROMPT_VERSION = "rs_cc_enrichment_image_text_v1"
 
 
 def prompt_version(profile: CaptionPromptProfile) -> str:
@@ -49,6 +51,36 @@ def caption_enrichment_messages(
             "role": "user",
             "content": "Original change description:\n{}".format(original_caption.strip()),
         },
+    ]
+
+
+def image_text_caption_messages(
+    original_caption: str, images: EncodedImagePair
+) -> List[ChatMessage]:
+    if not original_caption.strip():
+        raise ValueError("original caption cannot be empty")
+    content: List[Dict[str, object]] = [
+        {
+            "type": "text",
+            "text": (
+                "Image A is before and image B is after. Compare the co-registered remote-sensing "
+                "images and expand the reference description into one accurate change caption. "
+                "The reference is a fallible model output: preserve supported information, correct "
+                "claims that conflict with the images, and add only visually supported objects, "
+                "counts, directions, or locations. Ignore illumination, color balance, shadows, "
+                "and seasonal appearance unless they accompany structural change. Return only the "
+                "final caption.\n\nReference description:\n{}"
+            ).format(original_caption.strip()),
+        },
+        {"type": "image_url", "image_url": {"url": images.before_data_url}},
+        {"type": "image_url", "image_url": {"url": images.after_data_url}},
+    ]
+    return [
+        {
+            "role": "system",
+            "content": "You write concise, image-grounded bi-temporal remote-sensing captions.",
+        },
+        {"role": "user", "content": content},
     ]
 
 

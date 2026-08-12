@@ -86,7 +86,11 @@ class RSCCPipeline:
             run_id=run_id,
             item_id=request.item_id,
             payload=result_payload,
-            metadata={"profile": self.config.profile},
+            metadata={
+                "profile": self.config.profile,
+                "protocol": self.config.protocol.model_dump(mode="json"),
+                "input_modes": generation.input_modes,
+            },
         )
         result_artifact = self.artifacts.write(result_envelope)
         return RSCCPipelineResult(
@@ -109,7 +113,9 @@ class RSCCPipeline:
             payload=batch.model_dump(mode="json"),
             metadata={
                 "profile": self.config.profile,
+                "protocol": self.config.protocol.model_dump(mode="json"),
                 "prompt_version": batch.prompt_version,
+                "input_modes": batch.input_modes,
             },
         )
         return self.artifacts.write(envelope)
@@ -125,6 +131,7 @@ class RSCCPipeline:
             metadata={
                 "selector": self.config.selector.model,
                 "evaluator": self.config.evaluator.model,
+                "protocol": self.config.protocol.model_dump(mode="json"),
             },
         )
         return self.artifacts.write(envelope)

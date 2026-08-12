@@ -16,6 +16,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument(
+        "--references",
+        type=Path,
+        help="Optional normalized LEVIR-MCI reference JSONL for supplementary metrics.",
+    )
     return parser
 
 
@@ -23,7 +28,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         state = BatchStateStore(args.state).read()
-        summary = export_batch(state, args.output_dir)
+        summary = export_batch(state, args.output_dir, args.references)
         print(json.dumps(summary, ensure_ascii=False, indent=2))
         return 0
     except (OSError, ValueError, RuntimeError) as exc:

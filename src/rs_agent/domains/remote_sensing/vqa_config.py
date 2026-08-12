@@ -1,4 +1,4 @@
-"""Validated configuration for the paper-aligned RS-VQA stage."""
+"""Validated configuration for paper and operational RS-VQA experiments."""
 
 from __future__ import annotations
 
@@ -10,10 +10,21 @@ from pydantic import Field, model_validator
 
 from rs_agent.core.config import ModelConfig, ProviderConfig, ProviderRegistryConfig
 from rs_agent.core.schemas import StrictModel
+from rs_agent.experiments.protocol import ExperimentProtocol, ExperimentTrack
+
+
+def _legacy_protocol() -> ExperimentProtocol:
+    return ExperimentProtocol(
+        track=ExperimentTrack.OPERATIONAL,
+        baseline_id="legacy_unspecified",
+        method_variant="image_pair_vqa",
+        substitutes_paper_models=True,
+    )
 
 
 class RSVQAExperimentConfig(StrictModel):
     profile: str
+    protocol: ExperimentProtocol = Field(default_factory=_legacy_protocol)
     providers: Dict[str, ProviderConfig]
     answer_models: List[ModelConfig] = Field(min_length=5, max_length=5)
     selector: ModelConfig
@@ -34,13 +45,15 @@ class RSVQAExperimentConfig(StrictModel):
             {model.provider for model in models if model.provider not in self.providers}
         )
         if unknown:
-            raise ValueError("unknown providers referenced by RS-VQA models: {}".format(unknown))
+            raise ValueError(
+                "unknown providers referenced by RS-VQA models: {}".format(unknown)
+            )
         names = [model.name for model in self.answer_models]
         model_ids = [model.model for model in self.answer_models]
         if len(names) != len(set(names)):
             raise ValueError("RS-VQA answer model names must be unique")
         if len(model_ids) != len(set(model_ids)):
-            raise ValueError("paper profile requires five distinct RS-VQA models")
+            raise ValueError("RS-VQA requires five distinct answer models")
         return self
 
     def provider_registry(self) -> ProviderRegistryConfig:

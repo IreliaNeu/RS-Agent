@@ -1,4 +1,4 @@
-"""Command-line entry point for the paper-aligned RS-CC experiment."""
+"""Command-line entry point for text-only or capability-aware RS-CC experiments."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from dotenv import load_dotenv
 
 from rs_agent.core.artifacts import JsonArtifactStore, export_jsonl
+from rs_agent.core.schemas import ImagePair
 from rs_agent.domains.remote_sensing.caption_agent import RSCCRequest
 from rs_agent.domains.remote_sensing.config import RSCCExperimentConfig, load_rs_cc_config
 from rs_agent.domains.remote_sensing.dataset import (
@@ -26,12 +27,14 @@ from rs_agent.providers.registry import ProviderRegistry
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Generate and evaluate five text-only RS-CC candidates."
+        description="Generate and evaluate five RS-CC candidates."
     )
     parser.add_argument("--config", type=Path, default=Path("configs/rs_cc.paper.yaml"))
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--input", type=Path, help="Change-Agent caption JSONL")
     source.add_argument("--caption", help="Run one original caption directly")
+    parser.add_argument("--image-a", type=Path)
+    parser.add_argument("--image-b", type=Path)
     parser.add_argument("--item-id", default="single_item")
     parser.add_argument("--limit", type=int)
     parser.add_argument("--run-id")
@@ -44,9 +47,31 @@ def build_parser() -> argparse.ArgumentParser:
 def load_inputs(args: argparse.Namespace) -> List[RSCCInputRecord]:
     if args.caption is not None:
         return [
-            RSCCInputRecord(item_id=args.item_id, original_caption=args.caption, metadata={})
+            RSCCInputRecord(
+                item_id=args.item_id,
+                original_caption=args.caption,
+                image_a=args.image_a,
+                image_b=args.image_b,
+                metadata={},
+            )
         ]
     return materialize_records(iter_rs_cc_jsonl(args.input, limit=args.limit))
+
+
+def validate_images(config: RSCCExperimentConfig, records: Sequence[RSCCInputRecord]) -> None:
+    if not config.requires_images:
+        return
+    missing = [
+        record.item_id
+        for record in records
+        if record.image_a is None or record.image_b is None
+    ]
+    if missing:
+        raise ValueError(
+            "image-text RS-CC requires image_a/image_b for every item; missing: {}".format(
+                missing[:10]
+            )
+        )
 
 
 def dry_run_summary(
@@ -55,12 +80,17 @@ def dry_run_summary(
     return {
         "status": "valid",
         "profile": config.profile,
+        "protocol": config.protocol.model_dump(mode="json"),
         "prompt_profile": config.prompt_profile.value,
-        "input_mode": "text_only_original_caption",
         "record_count": len(records),
         "minimum_successful_candidates": config.minimum_successful_candidates,
         "caption_generators": [
-            {"label": chr(ord("A") + index), "name": model.name, "model": model.model}
+            {
+                "label": chr(ord("A") + index),
+                "name": model.name,
+                "model": model.model,
+                "input_mode": model.input_mode.value,
+            }
             for index, model in enumerate(config.caption_generators)
         ],
         "selector": config.selector.model,
@@ -80,9 +110,15 @@ async def run_batch(
     failures: List[Dict[str, str]] = []
     try:
         for record in records:
+            images = (
+                ImagePair(before=record.image_a, after=record.image_b)
+                if record.image_a is not None and record.image_b is not None
+                else None
+            )
             request = RSCCRequest(
                 item_id=record.item_id,
                 original_caption=record.original_caption,
+                images=images,
             )
             try:
                 result = await pipeline.run(request, run_id=run_id)
@@ -113,6 +149,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         config = load_rs_cc_config(args.config)
         records = load_inputs(args)
+        validate_images(config, records)
     except (OSError, ValueError) as exc:
         print("configuration/input error: {}".format(exc), file=sys.stderr)
         return 2

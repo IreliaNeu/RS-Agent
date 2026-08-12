@@ -14,6 +14,8 @@ from rs_agent.core.schemas import StrictModel
 class RSCCInputRecord(StrictModel):
     item_id: str
     original_caption: str
+    image_a: Optional[Path] = None
+    image_b: Optional[Path] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -22,6 +24,8 @@ class RSCCInputRecord(StrictModel):
             raise ValueError("item_id cannot be empty")
         if not self.original_caption.strip():
             raise ValueError("original_caption cannot be empty")
+        if (self.image_a is None) != (self.image_b is None):
+            raise ValueError("image_a and image_b must be supplied together")
         return self
 
 
@@ -44,11 +48,15 @@ def parse_rs_cc_record(data: Dict[str, Any], line_number: int) -> RSCCInputRecor
         "Image ID",
         "original_caption",
         "Original Caption",
+        "image_a",
+        "image_b",
     }
     metadata = {key: value for key, value in data.items() if key not in excluded}
     return RSCCInputRecord(
         item_id=str(item_id).strip(),
         original_caption=caption.strip(),
+        image_a=data.get("image_a"),
+        image_b=data.get("image_b"),
         metadata=metadata,
     )
 
@@ -56,6 +64,7 @@ def parse_rs_cc_record(data: Dict[str, Any], line_number: int) -> RSCCInputRecor
 def iter_rs_cc_jsonl(path: Path, limit: Optional[int] = None) -> Iterator[RSCCInputRecord]:
     if limit is not None and limit < 1:
         raise ValueError("limit must be at least 1")
+    base = path.resolve().parent
     with path.open("r", encoding="utf-8") as handle:
         emitted = 0
         for line_number, line in enumerate(handle, start=1):
@@ -67,6 +76,10 @@ def iter_rs_cc_jsonl(path: Path, limit: Optional[int] = None) -> Iterator[RSCCIn
                 raise ValueError("invalid JSON on line {}: {}".format(line_number, exc)) from exc
             if not isinstance(data, dict):
                 raise ValueError("line {} must be a JSON object".format(line_number))
+            for field in ("image_a", "image_b"):
+                value = data.get(field)
+                if value and not Path(value).is_absolute():
+                    data[field] = base / value
             yield parse_rs_cc_record(data, line_number)
             emitted += 1
             if limit is not None and emitted >= limit:

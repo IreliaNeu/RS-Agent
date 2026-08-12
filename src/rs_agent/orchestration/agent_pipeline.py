@@ -93,6 +93,7 @@ class RSAgentPipeline:
                 RSCCRequest(
                     item_id=request.item_id,
                     original_caption=request.original_caption,
+                    images=request.images,
                 ),
                 run_id,
             )

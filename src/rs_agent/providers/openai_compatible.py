@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
+from time import perf_counter
 from typing import Any, Dict, List, Optional
 
 import httpx
 
 from rs_agent.core.config import ProviderConfig
-from rs_agent.core.schemas import ModelResponse, TokenUsage
+from rs_agent.core.schemas import ModelResponse, RequestTelemetry, TokenUsage
 from rs_agent.providers.base import ChatMessage, ProviderError
 
 RETRYABLE_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
@@ -73,6 +74,20 @@ class OpenAICompatibleProvider:
     async def __aexit__(self, *args: object) -> None:
         await self.close()
 
+    @staticmethod
+    def _telemetry(
+        attempts: int,
+        started: float,
+        status_code: Optional[int],
+        attempt_status_codes: List[int],
+    ) -> RequestTelemetry:
+        return RequestTelemetry(
+            attempts=attempts,
+            latency_ms=round((perf_counter() - started) * 1000, 3),
+            status_code=status_code,
+            attempt_status_codes=list(attempt_status_codes),
+        )
+
     async def complete(
         self,
         messages: List[ChatMessage],
@@ -103,6 +118,9 @@ class OpenAICompatibleProvider:
 
         last_error: Optional[Exception] = None
         attempts = 0
+        started = perf_counter()
+        attempt_status_codes: List[int] = []
+        final_status: Optional[int] = None
         async with self._semaphore:
             for attempt in range(self.config.max_retries + 1):
                 attempts = attempt + 1
@@ -115,17 +133,45 @@ class OpenAICompatibleProvider:
                 except httpx.HTTPError as exc:
                     last_error = exc
                 else:
+                    final_status = response.status_code
+                    attempt_status_codes.append(response.status_code)
                     if response.status_code >= 400:
-                        error = ProviderError(
-                            "HTTP {}: {}".format(response.status_code, response.text[:300])
+                        message = "HTTP {}: {}".format(
+                            response.status_code, response.text[:300]
                         )
                         if response.status_code not in RETRYABLE_STATUS_CODES:
-                            raise error
-                        last_error = error
+                            raise ProviderError(
+                                message,
+                                telemetry=self._telemetry(
+                                    attempts,
+                                    started,
+                                    final_status,
+                                    attempt_status_codes,
+                                ),
+                            )
+                        last_error = ProviderError(message)
                     else:
                         try:
-                            return self._parse_response(response.json(), requested_model=model)
-                        except (KeyError, IndexError, TypeError, ValueError, ProviderError) as exc:
+                            parsed = self._parse_response(
+                                response.json(), requested_model=model
+                            )
+                            return parsed.model_copy(
+                                update={
+                                    "telemetry": self._telemetry(
+                                        attempts,
+                                        started,
+                                        final_status,
+                                        attempt_status_codes,
+                                    )
+                                }
+                            )
+                        except (
+                            KeyError,
+                            IndexError,
+                            TypeError,
+                            ValueError,
+                            ProviderError,
+                        ) as exc:
                             last_error = exc
 
                 if attempt < self.config.max_retries:
@@ -134,7 +180,10 @@ class OpenAICompatibleProvider:
         raise ProviderError(
             "provider {} failed after {} attempts: {}".format(
                 self.name, attempts, last_error
-            )
+            ),
+            telemetry=self._telemetry(
+                attempts, started, final_status, attempt_status_codes
+            ),
         )
 
     def _parse_response(self, data: Dict[str, Any], requested_model: str) -> ModelResponse:
