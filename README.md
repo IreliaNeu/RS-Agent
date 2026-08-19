@@ -18,6 +18,8 @@ This project is independently maintained and is based in part on [Change-Agent](
 - Resumable JSONL batch experiments with bounded concurrency, atomic state, retry controls, and opt-in verified result caching.
 - Content-derived experiment identities covering inputs, image/mask content, configs, source code, runtime versions, and run options.
 - Credential-safe provider preflight with optional `/models` endpoint and model-visibility checks.
+- Candidate-level LEVIR-MCI reference metrics with deterministic percentile-bootstrap confidence intervals.
+- Paired export comparison for aligned RS-CC ablations, including confidence intervals for per-item metric deltas.
 - Checksum-verified exports for per-item results, complete candidate ledgers, Judge scores, LEVIR-MCI reference metrics, request telemetry, failures, and model summaries.
 - Explicit `paper`, `operational`, and `enhancement` experiment protocols embedded in configs and artifacts.
 - OpenRouter and SiliconFlow through one OpenAI-compatible provider interface.
@@ -64,6 +66,8 @@ pip install -e ".[dev,evaluation]"
 pytest -q
 ```
 
+The API pipeline, batch orchestration, and offline evaluation do not require a local GPU. Change-Agent checkpoint inference remains GPU-oriented and is isolated from the API environment.
+
 Change-Agent MCI inference remains isolated in `rs-agent-mci`; it does not add legacy Torch dependencies to the API environment.
 
 ## Provider Profiles
@@ -82,6 +86,11 @@ Adapted profiles use currently available models and keep substitutions explicit:
 
 - `configs/rs_cc.adapted.yaml`: enhancement profile with two text-only and three image-text candidates.
 - `configs/rs_vqa.adapted.yaml`: operational profile with five currently available multimodal models.
+
+Paired RS-CC ablation profiles keep the five model identities and Judge roles fixed while changing only configured generator input modes:
+
+- `configs/rs_cc.ablation_text_only.yaml`: all five generators are text-only.
+- `configs/rs_cc.ablation_mixed.yaml`: two generators are text-only and three are image-text.
 
 Operational outputs must not be reported as paper reproduction results. Paper profiles never silently substitute a blocked or retired model. Credentials remain in `.env` and never belong in YAML, source, artifacts, state, cache indexes, or Git history.
 
@@ -160,7 +169,10 @@ Cross-batch caching is disabled unless `--cache-dir` is supplied. A cache hit re
 rs-agent-export \
   --state /path/to/batch-state/levir-mci-smoke/state.json \
   --output-dir /path/to/exports/levir-mci-smoke \
-  --references /path/to/levir_mci_test_references.jsonl
+  --references /path/to/levir_mci_test_references.jsonl \
+  --bootstrap-samples 2000 \
+  --bootstrap-seed 20260820 \
+  --confidence 0.95
 ```
 
 Exports are created only in an empty directory and include:
@@ -173,14 +185,33 @@ Exports are created only in an empty directory and include:
 - `model_summary.csv`: Judge statistics, selection counts, success rate, retries, latency, and token use by stage, role, model, and input mode.
 - `request_telemetry.csv`: every generator and Judge request with outcomes, HTTP statuses, retries, latency, and available token usage.
 - `caption_reference_metrics.csv`: selected-caption BLEU-1, unsmoothed BLEU-4, ROUGE-L, and change-flag agreement against normalized LEVIR-MCI references.
+- `caption_candidate_reference_metrics.csv`: the same supplementary metrics for every generated candidate, with failures preserved explicitly.
+- `caption_candidate_summary.csv`: model- and input-mode-level means, selection counts, and deterministic bootstrap intervals.
 
 Every referenced artifact is checksum-verified before export. A model that failed to generate is kept in the ledger and is never treated as a score of zero. LLM-as-Judge remains the primary method; reference metrics are supplementary and their definitions are versioned.
+
+Compare two aligned exports with paired confidence intervals:
+
+```bash
+python scripts/compare_rs_cc_ablation.py \
+  --baseline-export /path/to/text-only-export \
+  --enhancement-export /path/to/mixed-export \
+  --output-dir /path/to/paired-comparison
+```
+
+The comparator requires identical item sets and reference-manifest hashes. It writes per-item deltas and a bootstrap summary using `enhancement minus baseline` as the sign convention.
 
 ## Phase 8 Pilot
 
 A balanced 10-item LEVIR-MCI combined pilot (five change and five no-change samples) completed with 10/10 successful items, 50/50 RS-CC generations, and 50/50 RS-VQA generations. Across RS-CC candidates, text-only inputs averaged 8.45 Judge points and were selected 8/10 times; image-text inputs averaged 4.50 and were selected 2/10 times. The image-text models were especially vulnerable to treating seasonal appearance as change, so this capability remains an enhancement and ablation rather than a baseline replacement.
 
 The selected captions achieved BLEU-1 0.3897, unsmoothed sentence BLEU-4 0.0141, ROUGE-L 0.3190, and change-flag accuracy 1.0 on this small pilot. These numbers validate the evaluation path; they are not paper-scale results.
+
+## Phase 9 Paired Pilot
+
+A balanced 20-item, caption-only pilot compared the all-text configuration with the mixed image-text configuration. Both runs completed 20/20 items, 100/100 candidate generations, and 140/140 provider requests without failures or retries. The mixed-minus-text paired BLEU-1 delta was -0.0502 with a 95% bootstrap interval of [-0.0892, -0.0098]. BLEU-4 increased by 0.0165, while ROUGE-L decreased by 0.0255; both intervals crossed zero. Change-flag accuracy remained 1.0 in both runs.
+
+The candidate ledger shows that visual input was model-dependent: LLaMA 4 Maverick improved on BLEU-1, while the tested Mistral and Qwen-VL configurations declined. This is a small enhancement-track pilot, not a paper reproduction or a strict causal ablation: shared text candidates were regenerated, and external APIs may remain nondeterministic at temperature zero. A future replay-controlled run should freeze shared candidates.
 
 ## Change-Agent Batch Inference
 
@@ -226,8 +257,9 @@ docs/progress/                Chinese implementation records
 
 ## Next Milestones
 
-- Add larger paper-profile pilot runs and dataset-level metrics against available references.
-- Freeze paper baseline schemas and add explicit baseline/operational/enhancement run labels.
+- Add replay-controlled candidate freezing for strict RS-CC input-mode ablations.
+- Expand to stratified 50-100 item paper and enhancement pilots when the required model access is available.
+- Re-run and version Change-Agent captions and masks when GPU capacity is restored.
 - Design an optional, separately reported synthesis/arbitration Agent after the paper baseline is frozen.
 - Integrate the Streamlit demo after the experimental evidence pipeline is stable.
 
