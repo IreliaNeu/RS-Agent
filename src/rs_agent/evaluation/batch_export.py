@@ -11,6 +11,18 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from rs_agent.core.artifacts import ArtifactEnvelope, JsonArtifactStore
+from rs_agent.evaluation.bootstrap import (
+    DEFAULT_BOOTSTRAP_SAMPLES,
+    DEFAULT_BOOTSTRAP_SEED,
+    DEFAULT_CONFIDENCE,
+    bootstrap_metric_intervals,
+)
+from rs_agent.evaluation.candidate_metrics import (
+    METRIC_NAMES,
+    build_candidate_metric_rows,
+    caption_metric_values,
+    summarize_candidate_metrics,
+)
 from rs_agent.evaluation.reference_metrics import (
     REFERENCE_METRICS_VERSION,
     CaptionMetricRecord,
@@ -379,9 +391,16 @@ def export_batch(
     state: BatchRunState,
     output_dir: Path,
     references_path: Optional[Path] = None,
+    bootstrap_samples: int = DEFAULT_BOOTSTRAP_SAMPLES,
+    bootstrap_seed: int = DEFAULT_BOOTSTRAP_SEED,
+    confidence: float = DEFAULT_CONFIDENCE,
 ) -> Dict[str, Any]:
     if output_dir.exists() and any(output_dir.iterdir()):
         raise ValueError("output directory is not empty: {}".format(output_dir))
+    if bootstrap_samples < 1:
+        raise ValueError("bootstrap_samples must be positive")
+    if not 0.0 < confidence < 1.0:
+        raise ValueError("confidence must be between zero and one")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     item_rows = []
@@ -459,6 +478,30 @@ def export_batch(
     metric_rows, metric_records, missing_references, references_sha256 = (
         _caption_metric_rows(item_rows, references_path)
     )
+    candidate_metric_rows: List[Dict[str, Any]] = []
+    candidate_metric_summary: List[Dict[str, Any]] = []
+    selected_metric_intervals: Dict[str, Any] = {}
+    if references_path is not None:
+        references = load_reference_manifest(references_path)
+        candidate_metric_rows = build_candidate_metric_rows(caption_rows, references)
+        candidate_metric_summary = summarize_candidate_metrics(
+            candidate_metric_rows,
+            bootstrap_samples=bootstrap_samples,
+            confidence=confidence,
+            seed=bootstrap_seed,
+        )
+        intervals = bootstrap_metric_intervals(
+            caption_metric_values(
+                [record.model_dump(mode="json") for record in metric_records]
+            ),
+            bootstrap_samples=bootstrap_samples,
+            confidence=confidence,
+            seed=bootstrap_seed,
+        )
+        selected_metric_intervals = {
+            name: interval.model_dump(mode="json")
+            for name, interval in intervals.items()
+        }
     summary = {
         "batch_id": state.batch_id,
         "batch_status": state.status.value,
@@ -479,10 +522,18 @@ def export_batch(
         ),
         "request_telemetry_rows": len(request_rows),
         "caption_reference_metrics": mean_caption_metrics(metric_records),
+        "caption_reference_metric_intervals": selected_metric_intervals,
+        "caption_candidate_reference_rows": len(candidate_metric_rows),
         "caption_reference_matched_items": len(metric_records),
         "caption_reference_missing_items": missing_references,
         "caption_references_sha256": references_sha256,
         "caption_reference_metrics_version": REFERENCE_METRICS_VERSION,
+        "bootstrap": {
+            "method": "percentile bootstrap of the arithmetic mean",
+            "samples": bootstrap_samples,
+            "confidence": confidence,
+            "seed": bootstrap_seed,
+        },
         "export_source_sha256": source_tree_sha256(),
         "metric_definitions": {
             "primary": "LLM-as-Judge score and highest_score_then_judge selection",
@@ -592,6 +643,50 @@ def export_batch(
             "bleu_4",
             "rouge_l",
             "change_flag_match",
+        ],
+    )
+    _write_csv(
+        output_dir / "caption_candidate_reference_metrics.csv",
+        candidate_metric_rows,
+        [
+            "item_id",
+            "label",
+            "input_mode",
+            "model_name",
+            "provider",
+            "model_id",
+            "success",
+            "selected",
+            "judge_score",
+            "reference_matched",
+            "reference_count",
+            "change_flag",
+            "bleu_1",
+            "bleu_4",
+            "rouge_l",
+            "change_flag_match",
+            "text",
+        ],
+    )
+    interval_columns = [
+        "{}_{}".format(metric, bound)
+        for metric in METRIC_NAMES
+        for bound in ("mean", "lower", "upper")
+    ]
+    _write_csv(
+        output_dir / "caption_candidate_summary.csv",
+        candidate_metric_summary,
+        [
+            "scope",
+            "input_mode",
+            "model_name",
+            "provider",
+            "model_id",
+            "candidate_count",
+            "metric_count",
+            "selected_count",
+            "mean_judge_score",
+            *interval_columns,
         ],
     )
     return summary
