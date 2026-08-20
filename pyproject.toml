@@ -26,6 +26,7 @@ rs-agent-vqa = "rs_agent.applications.rs_vqa:main"
 rs-agent-batch = "rs_agent.applications.rs_batch:main"
 rs-agent-preflight = "rs_agent.applications.preflight:main"
 rs-agent-export = "rs_agent.applications.export_results:main"
+rs-agent-web = "rs_agent.applications.web_demo:main"
 
 [project.optional-dependencies]
 evaluation = [
@@ -34,7 +35,7 @@ evaluation = [
   "pandas>=2,<3",
 ]
 workflow = ["langgraph>=0.2,<1"]
-web = ["streamlit>=1.32,<2"]
+web = ["streamlit>=1.50,<2"]
 dev = [
   "pytest>=8,<9",
   "ruff>=0.5,<1",
