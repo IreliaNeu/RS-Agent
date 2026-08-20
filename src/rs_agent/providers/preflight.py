@@ -11,12 +11,15 @@ from pydantic import Field
 
 from rs_agent.core.config import ModelConfig, ProviderConfig
 from rs_agent.core.schemas import StrictModel
-from rs_agent.providers.openai_compatible import chat_completions_url
+from rs_agent.providers.openai_compatible import (
+    RETRYABLE_STATUS_CODES,
+    chat_completions_url,
+)
 
 _PROBE_IMAGE_DATA_URL = (
     "data:image/png;base64,"
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zq0s"
-    "AAAAASUVORK5CYII="
+    "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAALUlEQVR4nGN0aDjAQEvARFPTRy0Y"
+    "tWDUglELRi0YtWDUglELRi0YtWDUAioCAL29AcDCiU5NAAAAAElFTkSuQmCC"
 )
 
 
@@ -211,50 +214,65 @@ async def run_preflight(
             }
             async with httpx.AsyncClient(timeout=config.timeout_seconds) as client:
                 for item in checked:
-                    try:
-                        probe = await client.post(
-                            chat_completions_url(config.base_url),
-                            headers=probe_headers,
-                            json={
-                                "model": item.model,
-                                "messages": [
-                                    {
-                                        "role": "user",
-                                        "content": (
-                                            [
-                                                {
-                                                    "type": "text",
-                                                    "text": "Compare these images and reply OK.",
-                                                },
-                                                {
-                                                    "type": "image_url",
-                                                    "image_url": {
-                                                        "url": _PROBE_IMAGE_DATA_URL
+                    probe = None
+                    transport_error = None
+                    for attempt in range(config.max_retries + 1):
+                        try:
+                            probe = await client.post(
+                                chat_completions_url(config.base_url),
+                                headers=probe_headers,
+                                json={
+                                    "model": item.model,
+                                    "messages": [
+                                        {
+                                            "role": "user",
+                                            "content": (
+                                                [
+                                                    {
+                                                        "type": "text",
+                                                        "text": (
+                                                            "Compare these images and reply OK."
+                                                        ),
                                                     },
-                                                },
-                                                {
-                                                    "type": "image_url",
-                                                    "image_url": {
-                                                        "url": _PROBE_IMAGE_DATA_URL
+                                                    {
+                                                        "type": "image_url",
+                                                        "image_url": {
+                                                            "url": _PROBE_IMAGE_DATA_URL
+                                                        },
                                                     },
-                                                },
-                                            ]
-                                            if item.requires_images
-                                            else "Reply with OK."
-                                        ),
-                                    }
-                                ],
-                                "temperature": 0,
-                                "max_tokens": 4,
-                            },
-                        )
-                    except httpx.HTTPError as exc:
+                                                    {
+                                                        "type": "image_url",
+                                                        "image_url": {
+                                                            "url": _PROBE_IMAGE_DATA_URL
+                                                        },
+                                                    },
+                                                ]
+                                                if item.requires_images
+                                                else "Reply with OK."
+                                            ),
+                                        }
+                                    ],
+                                    "temperature": 0,
+                                    "max_tokens": 4,
+                                },
+                            )
+                            transport_error = None
+                        except httpx.HTTPError as exc:
+                            transport_error = exc
+                        if (
+                            probe is not None
+                            and probe.status_code not in RETRYABLE_STATUS_CODES
+                        ):
+                            break
+                        if attempt < config.max_retries:
+                            await asyncio.sleep(min(2**attempt, 8))
+                    if probe is None:
                         probed.append(
                             item.model_copy(
                                 update={
                                     "callable": False,
                                     "probe_message": "transport:{}".format(
-                                        type(exc).__name__
+                                        type(transport_error).__name__
                                     ),
                                 }
                             )
