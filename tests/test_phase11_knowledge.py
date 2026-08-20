@@ -42,7 +42,7 @@ def test_load_selected_knowledge_preserves_c_star_provenance(tmp_path: Path) -> 
                 runtime={},
                 config_sha256={},
                 options={},
-                item_fingerprints={"pair-1": "x"},
+                item_fingerprints={"pair-1": "x", "pair-2": "y"},
             ),
             status=BatchStatus.COMPLETED,
             items={
@@ -53,12 +53,21 @@ def test_load_selected_knowledge_preserves_c_star_provenance(tmp_path: Path) -> 
                     attempts=1,
                     run_id="caption-run",
                     result_artifact=str(result),
-                )
+                ),
+                "pair-2": BatchItemState(
+                    item_id="pair-2",
+                    item_fingerprint="y",
+                    status=ItemStatus.PENDING,
+                    attempts=0,
+                ),
             },
         )
     )
 
-    packet = load_selected_knowledge(state_path)["pair-1"]
+    loaded = load_selected_knowledge(state_path)
+    packet = loaded["pair-1"]
+
+    assert set(loaded) == {"pair-1"}
 
     assert packet.c_star == "A new building appears."
     assert packet.run_id == "caption-run"

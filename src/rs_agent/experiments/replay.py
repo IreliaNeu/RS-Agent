@@ -98,8 +98,14 @@ def load_selected_knowledge(
     state = BatchStateStore(state_path.resolve()).read()
     output: Dict[str, KnowledgeBridgePacket] = {}
     for item_id, item_state in state.items.items():
-        if item_state.status != ItemStatus.COMPLETED or not item_state.result_artifact:
-            raise ValueError("knowledge source item {} is not completed".format(item_id))
+        if item_state.status != ItemStatus.COMPLETED:
+            continue
+        if not item_state.result_artifact:
+            raise ValueError(
+                "completed knowledge source item {} has no result artifact".format(
+                    item_id
+                )
+            )
         result = _read(item_state.result_artifact, "rs_agent_result")
         if result.item_id != item_id:
             raise ValueError("knowledge result item ID does not match state")
