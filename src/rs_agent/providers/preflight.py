@@ -13,6 +13,12 @@ from rs_agent.core.config import ModelConfig, ProviderConfig
 from rs_agent.core.schemas import StrictModel
 from rs_agent.providers.openai_compatible import chat_completions_url
 
+_PROBE_IMAGE_DATA_URL = (
+    "data:image/png;base64,"
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zq0s"
+    "AAAAASUVORK5CYII="
+)
+
 
 class CheckStatus(str, Enum):
     OK = "ok"
@@ -24,6 +30,7 @@ class CheckStatus(str, Enum):
 class ModelVisibility(StrictModel):
     name: str
     model: str
+    requires_images: bool = False
     visible: Optional[bool] = None
     callable: Optional[bool] = None
     probe_http_status: Optional[int] = None
@@ -93,13 +100,22 @@ async def run_preflight(
     *,
     check_network: bool,
     probe_completions: bool = False,
+    image_model_ids: Optional[Iterable[str]] = None,
 ) -> PreflightReport:
+    required_images = set(image_model_ids or [])
     if probe_completions and not check_network:
         raise ValueError("completion probes require check_network=True")
     async def inspect(
         name: str, config: ProviderConfig, models: List[ModelConfig]
     ) -> ProviderPreflightResult:
-        visibility = [ModelVisibility(name=item.name, model=item.model) for item in models]
+        visibility = [
+            ModelVisibility(
+                name=item.name,
+                model=item.model,
+                requires_images=item.model in required_images,
+            )
+            for item in models
+        ]
         try:
             api_key = config.resolve_api_key()
         except ValueError:
@@ -181,6 +197,7 @@ async def run_preflight(
             ModelVisibility(
                 name=item.name,
                 model=item.model,
+                requires_images=item.model in required_images,
                 visible=item.model in visible_ids,
             )
             for item in models
@@ -201,7 +218,31 @@ async def run_preflight(
                             json={
                                 "model": item.model,
                                 "messages": [
-                                    {"role": "user", "content": "Reply with OK."}
+                                    {
+                                        "role": "user",
+                                        "content": (
+                                            [
+                                                {
+                                                    "type": "text",
+                                                    "text": "Compare these images and reply OK.",
+                                                },
+                                                {
+                                                    "type": "image_url",
+                                                    "image_url": {
+                                                        "url": _PROBE_IMAGE_DATA_URL
+                                                    },
+                                                },
+                                                {
+                                                    "type": "image_url",
+                                                    "image_url": {
+                                                        "url": _PROBE_IMAGE_DATA_URL
+                                                    },
+                                                },
+                                            ]
+                                            if item.requires_images
+                                            else "Reply with OK."
+                                        ),
+                                    }
                                 ],
                                 "temperature": 0,
                                 "max_tokens": 4,

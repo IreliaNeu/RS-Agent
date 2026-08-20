@@ -45,10 +45,19 @@ async def inspect(args: argparse.Namespace) -> dict:
             ),
         ]
     )
+    image_model_ids = {
+        model.model
+        for model in cc.caption_generators
+        if model.input_mode.value == "image_text"
+    }
+    image_model_ids.update(
+        model.model for model in [*vqa.answer_models, vqa.selector, vqa.evaluator]
+    )
     report = await run_preflight(
         provider_models,
         check_network=args.network or args.probe_completions,
         probe_completions=args.probe_completions,
+        image_model_ids=image_model_ids,
     )
     return {
         "cc_profile": cc.profile,

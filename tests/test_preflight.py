@@ -28,12 +28,19 @@ def test_credential_only_preflight_never_returns_key(monkeypatch) -> None:
     model = ModelConfig(name="model-a", provider="fake", model="vendor/model-a")
     collected = collect_provider_models([({"fake": provider}, [model])])
 
-    report = asyncio.run(run_preflight(collected, check_network=False))
+    report = asyncio.run(
+        run_preflight(
+            collected,
+            check_network=False,
+            image_model_ids={"vendor/model-a"},
+        )
+    )
     serialized = report.model_dump_json()
 
     assert report.ok is True
     assert report.providers[0].credential_status == CheckStatus.OK
     assert report.providers[0].endpoint_status == CheckStatus.SKIPPED
+    assert report.providers[0].models[0].requires_images is True
     assert "super-secret-value" not in serialized
 
 
