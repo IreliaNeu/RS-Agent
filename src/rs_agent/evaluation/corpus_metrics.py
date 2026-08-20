@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from collections import Counter, defaultdict
+from collections import Counter
 from typing import Dict, Mapping, Sequence, Tuple
 
 from rs_agent.evaluation.reference_metrics import CaptionReference, tokenize
