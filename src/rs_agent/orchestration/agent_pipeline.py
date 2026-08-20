@@ -39,6 +39,7 @@ class RSAgentRequest(StrictModel):
     task_type: TaskType = TaskType.COMBINED
     user_questions: List[str] = Field(default_factory=list)
     use_knowledge_bridge: bool = True
+    provided_knowledge: Optional[KnowledgeBridgePacket] = None
     mask: Optional[MaskEvidenceRequest] = None
     replayed_caption_candidates: Dict[str, CaptionReplayCandidate] = Field(
         default_factory=dict
@@ -86,7 +87,13 @@ class RSAgentPipeline:
             request.task_type,
             use_knowledge_bridge=request.use_knowledge_bridge,
             has_mask=request.mask is not None,
+            has_provided_knowledge=request.provided_knowledge is not None,
         )
+        if request.provided_knowledge is not None:
+            if request.provided_knowledge.item_id != request.item_id:
+                raise ValueError("provided Knowledge Bridge item does not match request")
+            if not request.use_knowledge_bridge:
+                raise ValueError("provided knowledge requires use_knowledge_bridge=True")
         plan_artifact = self._write_plan(plan, request, run_id)
 
         caption_result: Optional[RSCCPipelineResult] = None
@@ -105,9 +112,12 @@ class RSAgentPipeline:
                 run_id,
             )
         if PipelineStage.KNOWLEDGE_BRIDGE in plan.stages:
-            if caption_result is None:
+            if caption_result is not None:
+                knowledge = bridge_selected_caption(caption_result)
+            elif request.provided_knowledge is not None:
+                knowledge = request.provided_knowledge
+            else:
                 raise RuntimeError("knowledge bridge requires a selected RS-CC caption")
-            knowledge = bridge_selected_caption(caption_result)
         if PipelineStage.RS_VQA in plan.stages:
             vqa_result = await self.vqa_pipeline.run(
                 RSVQARequest(
@@ -125,6 +135,7 @@ class RSAgentPipeline:
             build_evidence_bundle(
                 original_caption=request.original_caption,
                 caption=caption_result,
+                knowledge_caption=knowledge.c_star if knowledge else None,
                 vqa=vqa_result,
                 mask=mask_result.summary if mask_result else None,
             ),
@@ -197,6 +208,12 @@ class RSAgentPipeline:
                     "question_count": len(request.user_questions),
                     "use_knowledge_bridge": request.use_knowledge_bridge,
                     "has_mask": request.mask is not None,
+                    "has_provided_knowledge": request.provided_knowledge is not None,
+                    "provided_knowledge_source": (
+                        request.provided_knowledge.source_result_artifact
+                        if request.provided_knowledge
+                        else None
+                    ),
                 },
             },
         )

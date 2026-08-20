@@ -320,11 +320,25 @@ def render_app() -> None:
     follow_up = st.chat_input("Ask a follow-up question")
     if follow_up and "current_inputs" in st.session_state:
         previous = dict(st.session_state.current_inputs)
+        latest_view = st.session_state.latest_view
         previous.update(
             {
                 "run_id": _run_id(previous["item_id"]),
                 "task_type": TaskType.VQA,
                 "questions": [follow_up],
+                "provided_knowledge": (
+                    {
+                        "run_id": latest_view.run_id,
+                        "item_id": latest_view.item_id,
+                        "c_star": latest_view.knowledge_caption,
+                        "source_result_artifact": (
+                            latest_view.knowledge_source_artifact
+                        ),
+                    }
+                    if latest_view.knowledge_caption
+                    and latest_view.knowledge_source_artifact
+                    else None
+                ),
             }
         )
         cc_relative, vqa_relative = PROFILE_PATHS[profile]

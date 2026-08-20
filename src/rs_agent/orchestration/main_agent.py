@@ -39,6 +39,7 @@ def plan_request(
     *,
     use_knowledge_bridge: bool,
     has_mask: bool,
+    has_provided_knowledge: bool = False,
 ) -> MainAgentPlan:
     """Translate the requested output into the smallest valid paper workflow."""
 
@@ -57,7 +58,9 @@ def plan_request(
 
     # VQA needs RS-CC only when C* is requested through the bridge.  This
     # preserves the paper's with/without-KB ablation as a real execution path.
-    run_caption = return_caption or (return_answers and use_knowledge_bridge)
+    run_caption = return_caption or (
+        return_answers and use_knowledge_bridge and not has_provided_knowledge
+    )
     if run_caption:
         stages.append(PipelineStage.RS_CC)
     if return_answers and use_knowledge_bridge:
@@ -67,7 +70,9 @@ def plan_request(
     if has_mask:
         stages.append(PipelineStage.MASK_EVIDENCE)
 
-    if return_answers and use_knowledge_bridge:
+    if return_answers and use_knowledge_bridge and has_provided_knowledge:
+        rationale = "RS-VQA requested with a previously selected, provenance-linked C*."
+    elif return_answers and use_knowledge_bridge:
         rationale = "RS-VQA requested with selected caption C* as contextual prior."
     elif return_answers:
         rationale = "RS-VQA requested without caption context for the KB ablation path."

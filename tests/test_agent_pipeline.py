@@ -10,6 +10,7 @@ from rs_agent.domains.remote_sensing.config import RSCCExperimentConfig
 from rs_agent.domains.remote_sensing.mask_evidence import MaskEvidenceRequest
 from rs_agent.domains.remote_sensing.vqa_config import RSVQAExperimentConfig
 from rs_agent.orchestration.agent_pipeline import RSAgentPipeline, RSAgentRequest
+from rs_agent.orchestration.knowledge_bridge import KnowledgeBridgePacket
 
 
 def provider_config() -> dict:
@@ -130,3 +131,44 @@ def test_complete_pipeline_bridges_only_selected_c_star(tmp_path: Path) -> None:
     assert "CC caption from cc-a" not in prompt
     assert prompt.count("data:image/png;base64,") == 2
     assert str(mask) not in prompt
+
+
+def test_vqa_follow_up_reuses_provided_c_star_without_rerunning_rs_cc(
+    tmp_path: Path,
+) -> None:
+    before = tmp_path / "before.png"
+    after = tmp_path / "after.png"
+    Image.new("RGB", (4, 4), color=(10, 20, 30)).save(before)
+    Image.new("RGB", (4, 4), color=(30, 20, 10)).save(after)
+    provider = FakeProvider()
+    registry = FakeRegistry(provider)
+    result = asyncio.run(
+        RSAgentPipeline(
+            cc_config(),
+            registry,
+            vqa_config(),
+            registry,
+            JsonArtifactStore(tmp_path / "artifacts"),
+        ).run(
+            RSAgentRequest(
+                item_id="pair-1",
+                original_caption="A building appeared.",
+                images=ImagePair(before=before, after=after),
+                task_type="vqa",
+                user_questions=["What changed?"],
+                provided_knowledge=KnowledgeBridgePacket(
+                    run_id="source-run",
+                    item_id="pair-1",
+                    c_star="A new building appeared in the eastern area.",
+                    source_result_artifact="/artifacts/source/rs_cc_result.json",
+                ),
+            ),
+            "follow-up-test",
+        )
+    )
+
+    assert "rs_cc" not in [stage.value for stage in result.plan.stages]
+    assert result.knowledge.c_star == "A new building appeared in the eastern area."
+    assert not any(call["model"].startswith("cc-") for call in provider.calls)
+    vqa_call = next(call for call in provider.calls if call["model"] == "vqa-a")
+    assert result.knowledge.c_star in json.dumps(vqa_call["messages"])

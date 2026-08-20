@@ -17,6 +17,7 @@ from rs_agent.orchestration.agent_pipeline import (
     RSAgentPipelineResult,
     RSAgentRequest,
 )
+from rs_agent.orchestration.knowledge_bridge import KnowledgeBridgePacket
 from rs_agent.providers.registry import ProviderRegistry
 
 
@@ -29,6 +30,7 @@ class DemoPipelineRequest(StrictModel):
     task_type: TaskType
     questions: List[str] = Field(default_factory=list)
     use_knowledge_bridge: bool = True
+    provided_knowledge: Optional[KnowledgeBridgePacket] = None
     mask: Optional[Path] = None
     mask_source: MaskSource = MaskSource.PREDICTED
     mask_min_component_pixels: int = Field(default=1, ge=1)
@@ -74,6 +76,7 @@ class DemoRunView(StrictModel):
     selected_caption: Optional[str] = None
     selected_caption_label: Optional[str] = None
     knowledge_caption: Optional[str] = None
+    knowledge_source_artifact: Optional[str] = None
     caption_candidates: List[CaptionCandidateView] = Field(default_factory=list)
     selected_answers: List[SelectedAnswerView] = Field(default_factory=list)
     vqa_candidates: List[VQACandidateView] = Field(default_factory=list)
@@ -186,6 +189,9 @@ def build_demo_view(result: RSAgentPipelineResult) -> DemoRunView:
         selected_caption=(result.caption.selected_caption if result.caption else None),
         selected_caption_label=(result.caption.selected_label if result.caption else None),
         knowledge_caption=(result.knowledge.c_star if result.knowledge else None),
+        knowledge_source_artifact=(
+            result.knowledge.source_result_artifact if result.knowledge else None
+        ),
         caption_candidates=caption_candidates,
         selected_answers=selected_answers,
         vqa_candidates=vqa_candidates,
@@ -224,6 +230,7 @@ async def run_demo_pipeline(
                 task_type=request.task_type,
                 user_questions=request.questions,
                 use_knowledge_bridge=request.use_knowledge_bridge,
+                provided_knowledge=request.provided_knowledge,
                 mask=(
                     MaskEvidenceRequest(
                         path=request.mask,

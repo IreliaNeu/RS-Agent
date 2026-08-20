@@ -93,6 +93,7 @@ def build_evidence_bundle(
     *,
     original_caption: str,
     caption: Optional[RSCCPipelineResult],
+    knowledge_caption: Optional[str] = None,
     vqa: Optional[RSVQAPipelineResult],
     mask: Optional[MaskEvidenceSummary],
 ) -> EvidenceBundle:
@@ -112,6 +113,16 @@ def build_evidence_bundle(
                 statement=caption.selected_caption,
                 stance=classify_statement(caption.selected_caption),
                 metadata={"selected_label": caption.selected_label},
+            )
+        )
+    elif knowledge_caption:
+        claims.append(
+            EvidenceClaim(
+                source_id="caption:c_star_reused",
+                kind=EvidenceKind.SELECTED_CAPTION,
+                statement=knowledge_caption,
+                stance=classify_statement(knowledge_caption),
+                metadata={"generation_mode": "reused"},
             )
         )
     if vqa is not None:
