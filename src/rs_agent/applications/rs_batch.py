@@ -135,15 +135,20 @@ async def execute(args: argparse.Namespace) -> dict:
         if args.provided_knowledge_state is not None
         else {}
     )
+    planned_items = items[: args.max_items] if args.max_items is not None else items
     missing_replays = [
-        item.item_id for item in items if item.item_id not in caption_replays
+        item.item_id
+        for item in planned_items
+        if item.item_id not in caption_replays
     ]
     if caption_replays and missing_replays:
         raise ValueError(
             "replay state is missing input items: {}".format(missing_replays)
         )
     missing_knowledge = [
-        item.item_id for item in items if item.item_id not in provided_knowledge
+        item.item_id
+        for item in planned_items
+        if item.item_id not in provided_knowledge
     ]
     if provided_knowledge and missing_knowledge:
         raise ValueError(
