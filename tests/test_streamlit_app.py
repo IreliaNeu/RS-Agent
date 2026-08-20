@@ -42,3 +42,19 @@ def test_streamlit_app_renders_dataset_sample_without_exceptions(
     assert not app.exception
     assert app.title[0].value == "RS-Agent"
     assert "sample-1" in [widget.value for widget in app.selectbox]
+
+def test_streamlit_app_requires_configured_password(monkeypatch) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    monkeypatch.setenv("RS_AGENT_WEB_PASSWORD", "research-only")
+
+    app = AppTest.from_file(str(repo_root / "src" / "rs_agent" / "web" / "app.py"))
+    app.run(timeout=20)
+
+    assert not app.exception
+    assert app.title[0].value == "RS-Agent"
+    assert app.text_input[0].label == "Password"
+
+    app.text_input[0].set_value("research-only").run(timeout=20)
+
+    assert not app.exception
+    assert app.selectbox[0].label == "Profile"

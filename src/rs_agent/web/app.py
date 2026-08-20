@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,6 +31,20 @@ PROFILE_PATHS = {
     "Operational": ("configs/rs_cc.smoke.yaml", "configs/rs_vqa.smoke.yaml"),
     "Paper experiment": ("configs/rs_cc.paper.yaml", "configs/rs_vqa.paper.yaml"),
 }
+
+
+def _require_password() -> None:
+    expected = os.getenv("RS_AGENT_WEB_PASSWORD", "")
+    if not expected or st.session_state.get("authenticated"):
+        return
+    st.title("RS-Agent")
+    supplied = st.text_input("Password", type="password")
+    if supplied and hmac.compare_digest(supplied, expected):
+        st.session_state.authenticated = True
+        st.rerun()
+    if supplied:
+        st.error("Invalid password")
+    st.stop()
 
 
 def _session_directory() -> Path:
@@ -224,6 +239,7 @@ def _resolve_inputs(source_mode: str, manifest_path: str):
 
 def render_app() -> None:
     st.set_page_config(page_title="RS-Agent", layout="wide")
+    _require_password()
     st.markdown(
         """
         <style>
