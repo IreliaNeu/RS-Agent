@@ -144,6 +144,9 @@ def _caption_data(
                 "item_id": item_id,
                 "label": candidate["label"],
                 "input_mode": candidate.get("input_mode", "text_only"),
+                "generation_mode": candidate.get("generation_mode", "generated"),
+                "source_candidate_id": candidate.get("source_candidate_id"),
+                "source_artifact": candidate.get("source_artifact"),
                 "model_name": candidate["model"]["name"],
                 "provider": candidate["model"]["provider"],
                 "model_id": candidate["model"]["model"],
@@ -156,22 +159,23 @@ def _caption_data(
                 "text": candidate.get("text", ""),
             }
         )
-        requests.append(
-            _request_row(
-                item_id=item_id,
-                stage="rs_cc",
-                role="generator",
-                label=candidate["label"],
-                input_mode=candidate.get("input_mode", "text_only"),
-                model_name=candidate["model"]["name"],
-                provider=candidate["model"]["provider"],
-                model_id=candidate["model"]["model"],
-                success=not bool(candidate.get("error")),
-                error=candidate.get("error"),
-                response=response,
-                telemetry=candidate.get("telemetry"),
+        if candidate.get("generation_mode", "generated") != "replayed":
+            requests.append(
+                _request_row(
+                    item_id=item_id,
+                    stage="rs_cc",
+                    role="generator",
+                    label=candidate["label"],
+                    input_mode=candidate.get("input_mode", "text_only"),
+                    model_name=candidate["model"]["name"],
+                    provider=candidate["model"]["provider"],
+                    model_id=candidate["model"]["model"],
+                    success=not bool(candidate.get("error")),
+                    error=candidate.get("error"),
+                    response=response,
+                    telemetry=candidate.get("telemetry"),
+                )
             )
-        )
     for role in ("selector", "evaluator"):
         response = evaluation.get("{}_response".format(role)) or {}
         requests.append(
@@ -513,6 +517,9 @@ def export_batch(
         "consensus_counts": dict(consensus_counts),
         "caption_mask_counts": dict(mask_caption_counts),
         "caption_candidate_rows": len(caption_rows),
+        "caption_replayed_rows": sum(
+            row.get("generation_mode") == "replayed" for row in caption_rows
+        ),
         "caption_generation_failures": sum(
             not bool(row["success"]) for row in caption_rows
         ),
@@ -574,7 +581,14 @@ def export_batch(
     _write_csv(
         output_dir / "caption_scores.csv",
         caption_rows,
-        [common[0], "input_mode", *common[1:]],
+        [
+            common[0],
+            "input_mode",
+            "generation_mode",
+            "source_candidate_id",
+            "source_artifact",
+            *common[1:],
+        ],
     )
     _write_csv(
         output_dir / "vqa_scores.csv",

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -95,6 +95,9 @@ class CaptionCandidate(StrictModel):
     response: Optional[ModelResponse] = None
     telemetry: Optional[RequestTelemetry] = None
     error: Optional[str] = None
+    generation_mode: Literal["generated", "replayed"] = "generated"
+    source_candidate_id: Optional[str] = None
+    source_artifact: Optional[str] = None
 
 
 class CandidateScore(StrictModel):

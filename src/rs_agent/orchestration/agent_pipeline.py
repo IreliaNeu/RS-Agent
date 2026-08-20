@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import Field
 
 from rs_agent.core.artifacts import ArtifactEnvelope, JsonArtifactStore
 from rs_agent.core.schemas import ImagePair, StrictModel, TaskType
-from rs_agent.domains.remote_sensing.caption_agent import RSCCRequest
+from rs_agent.domains.remote_sensing.caption_agent import (
+    CaptionReplayCandidate,
+    RSCCRequest,
+)
 from rs_agent.domains.remote_sensing.config import RSCCExperimentConfig
 from rs_agent.domains.remote_sensing.mask_evidence import (
     MaskEvidenceRequest,
@@ -37,6 +40,9 @@ class RSAgentRequest(StrictModel):
     user_questions: List[str] = Field(default_factory=list)
     use_knowledge_bridge: bool = True
     mask: Optional[MaskEvidenceRequest] = None
+    replayed_caption_candidates: Dict[str, CaptionReplayCandidate] = Field(
+        default_factory=dict
+    )
 
 
 class MaskEvidencePipelineResult(StrictModel):
@@ -94,6 +100,7 @@ class RSAgentPipeline:
                     item_id=request.item_id,
                     original_caption=request.original_caption,
                     images=request.images,
+                    replayed_candidates=request.replayed_caption_candidates,
                 ),
                 run_id,
             )

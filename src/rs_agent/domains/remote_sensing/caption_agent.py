@@ -38,16 +38,29 @@ from rs_agent.providers.base import ChatMessage, ProviderError
 from rs_agent.providers.registry import ProviderRegistry
 
 
+class CaptionReplayCandidate(StrictModel):
+    label: str
+    model: ModelRef
+    input_mode: str
+    text: str
+    source_candidate_id: str
+    source_artifact: str
+
+
 class RSCCRequest(StrictModel):
     request_id: str = Field(default_factory=lambda: uuid4().hex)
     item_id: str
     original_caption: str
     images: Optional[ImagePair] = None
+    replayed_candidates: Dict[str, CaptionReplayCandidate] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_caption(self) -> "RSCCRequest":
         if not self.original_caption.strip():
             raise ValueError("RS-CC requires one original Change-Agent caption")
+        for label, candidate in self.replayed_candidates.items():
+            if label != label.upper() or label != candidate.label:
+                raise ValueError("replayed candidate keys must match uppercase labels")
         return self
 
 
@@ -84,10 +97,16 @@ class RSCCAgent:
                     "image-text RS-CC configuration requires the original image pair"
                 )
             encoded = encode_original_image_pair(request.images)
-        tasks = [
-            self._generate_one(index, model, request.original_caption, encoded)
-            for index, model in enumerate(self.config.caption_generators)
-        ]
+        tasks = []
+        for index, model in enumerate(self.config.caption_generators):
+            label = chr(ord("A") + index)
+            replay = request.replayed_candidates.get(label)
+            if replay is not None:
+                tasks.append(self._replay_one(index, model, replay))
+            else:
+                tasks.append(
+                    self._generate_one(index, model, request.original_caption, encoded)
+                )
         candidates = await asyncio.gather(*tasks)
         errors = {
             candidate.label: candidate.error
@@ -118,6 +137,44 @@ class RSCCAgent:
             errors=errors,
             started_at=started_at,
             completed_at=utc_now(),
+        )
+
+    async def _replay_one(
+        self,
+        index: int,
+        model: CaptionModelConfig,
+        replay: CaptionReplayCandidate,
+    ) -> CaptionCandidate:
+        label = chr(ord("A") + index)
+        expected_model = ModelRef(
+            name=model.name,
+            provider=model.provider,
+            model=model.model,
+        )
+        if replay.label != label:
+            raise ValueError(
+                "replayed candidate label {} does not match slot {}".format(
+                    replay.label, label
+                )
+            )
+        if replay.model != expected_model:
+            raise ValueError(
+                "replayed candidate {} model identity does not match config".format(label)
+            )
+        if replay.input_mode != model.input_mode.value:
+            raise ValueError(
+                "replayed candidate {} input mode does not match config".format(label)
+            )
+        if not replay.text.strip():
+            raise ValueError("replayed candidate {} is empty".format(label))
+        return CaptionCandidate(
+            label=label,
+            model=expected_model,
+            input_mode=replay.input_mode,
+            text=replay.text.strip(),
+            generation_mode="replayed",
+            source_candidate_id=replay.source_candidate_id,
+            source_artifact=replay.source_artifact,
         )
 
     async def _generate_one(

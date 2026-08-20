@@ -18,7 +18,12 @@ from rs_agent.domains.remote_sensing.mask_evidence import MaskEvidenceRequest, M
 from rs_agent.domains.remote_sensing.vqa_config import load_rs_vqa_config
 from rs_agent.experiments.batch import BatchRunner, load_batch_items
 from rs_agent.experiments.cache import ResultCache
-from rs_agent.experiments.identity import BatchItem, build_experiment_identity
+from rs_agent.experiments.identity import (
+    BatchItem,
+    build_experiment_identity,
+    sha256_file,
+)
+from rs_agent.experiments.replay import load_caption_replays, normalize_replay_labels
 from rs_agent.experiments.state import BatchStateStore
 from rs_agent.orchestration.agent_pipeline import RSAgentPipeline, RSAgentRequest
 from rs_agent.providers.registry import ProviderRegistry
@@ -49,12 +54,23 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--artifact-dir", type=Path, default=Path("artifacts"))
     parser.add_argument("--state-dir", type=Path, default=Path("batch-state"))
     parser.add_argument("--cache-dir", type=Path)
+    parser.add_argument(
+        "--replay-caption-state",
+        type=Path,
+        help="Completed baseline state whose caption candidates may be replayed",
+    )
+    parser.add_argument(
+        "--replay-caption-label",
+        action="append",
+        default=[],
+        help="Candidate label to replay from the baseline state (repeatable)",
+    )
     parser.add_argument("--dry-run", action="store_true")
     return parser
 
 
 def options(args: argparse.Namespace) -> dict:
-    return {
+    values = {
         "task_type": TASK_TYPES[args.task_type].value,
         "use_knowledge_bridge": not args.without_knowledge_bridge,
         "use_masks": not args.without_masks,
@@ -62,6 +78,14 @@ def options(args: argparse.Namespace) -> dict:
         "mask_min_component_pixels": args.mask_min_component_pixels,
         "mask_min_changed_ratio": args.mask_min_changed_ratio,
     }
+    if args.replay_caption_state is not None:
+        values["replay_caption_state_sha256"] = sha256_file(
+            args.replay_caption_state.resolve()
+        )
+        values["replay_caption_labels"] = normalize_replay_labels(
+            args.replay_caption_label
+        )
+    return values
 
 
 def mask_request(item: BatchItem, args: argparse.Namespace) -> Optional[MaskEvidenceRequest]:
@@ -77,6 +101,22 @@ def mask_request(item: BatchItem, args: argparse.Namespace) -> Optional[MaskEvid
 
 async def execute(args: argparse.Namespace) -> dict:
     items = load_batch_items(args.input)
+    if bool(args.replay_caption_state) != bool(args.replay_caption_label):
+        raise ValueError(
+            "--replay-caption-state and --replay-caption-label must be used together"
+        )
+    caption_replays = (
+        load_caption_replays(args.replay_caption_state, args.replay_caption_label)
+        if args.replay_caption_state is not None
+        else {}
+    )
+    missing_replays = [
+        item.item_id for item in items if item.item_id not in caption_replays
+    ]
+    if caption_replays and missing_replays:
+        raise ValueError(
+            "replay state is missing input items: {}".format(missing_replays)
+        )
     cc_config = load_rs_cc_config(args.cc_config)
     vqa_config = load_rs_vqa_config(args.vqa_config)
     experiment = build_experiment_identity(
@@ -116,6 +156,7 @@ async def execute(args: argparse.Namespace) -> dict:
                 user_questions=item.user_questions,
                 use_knowledge_bridge=not args.without_knowledge_bridge,
                 mask=mask_request(item, args),
+                replayed_caption_candidates=caption_replays.get(item.item_id, {}),
             ),
             run_id,
         )
