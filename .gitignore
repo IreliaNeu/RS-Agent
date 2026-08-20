@@ -21,3 +21,4 @@ dist/
 *.ckpt
 *.zip
 .ipynb_checkpoints/
+.rs-agent-web/

@@ -4,6 +4,8 @@ RS-Agent is a research-oriented pipeline for multi-agent remote-sensing image ch
 
 This project is independently maintained and is based in part on [Change-Agent](https://github.com/Chen-Yang-Liu/Change-Agent). Curated legacy source is kept under `legacy/` as a migration reference; new implementation belongs under `src/rs_agent/` and `scripts/`.
 
+The consolidated paper-method mapping and system design are documented in [Project architecture and paper alignment](docs/PROJECT_ARCHITECTURE_AND_PAPER_ALIGNMENT.zh-CN.md).
+
 ## Implemented
 
 - A paper-aligned text-only RS-CC baseline plus a capability-aware enhancement where selected VLMs can read the original image pair and reference caption.
@@ -25,6 +27,8 @@ This project is independently maintained and is based in part on [Change-Agent](
 - OpenRouter and SiliconFlow through one OpenAI-compatible provider interface.
 - Write-once JSON artifacts with SHA-256 integrity verification.
 - Reproducible Change-Agent caption and three-class mask inference for 100 LEVIR-MCI test pairs.
+- Integrity-checked candidate replay for controlled RS-CC ablations that freeze shared candidates without new provider requests.
+- A Streamlit research demo for dataset samples or uploads, complete candidate ledgers, mask evidence, artifacts, and provenance-preserving follow-up VQA.
 
 ## Pipeline Contract
 
@@ -62,7 +66,7 @@ The paper describes the Main Agent as a task coordinator, not as an additional L
 ```bash
 conda env create -f environment.yml
 conda activate rs-agent
-pip install -e ".[dev,evaluation]"
+pip install --no-build-isolation -e ".[dev,evaluation,web]"
 pytest -q
 ```
 
@@ -123,6 +127,19 @@ rs-agent-run \
 
 Use `--question` one or more times for user questions. If no question is supplied to a VQA task, the configured preset question set is used. The individual stages remain available as `rs-agent-cc` and `rs-agent-vqa`.
 
+## Streamlit Demo
+
+Run the research interface on a local-only listener:
+
+```bash
+export RS_AGENT_REPO_ROOT=/path/to/RS-Agent
+export RS_AGENT_DEMO_MANIFEST=/path/to/levir_mci_test_100_with_masks.jsonl
+export RS_AGENT_WEB_WORKDIR=/path/to/web-work
+rs-agent-web --server.address 127.0.0.1 --server.port 8501
+```
+
+The interface supports manifest samples and validated uploads, paper/operational/enhancement profiles, caption/VQA/combined tasks, Knowledge Bridge ablation, optional masks, candidate and Judge ledgers, evidence conflicts, and artifact provenance. Follow-up questions reuse the previous provenance-linked `C*` and execute RS-VQA only. The demo has no authentication and must not be exposed directly on a public interface.
+
 ## Batch Experiments
 
 The batch input is JSONL with one item per line:
@@ -160,6 +177,20 @@ rs-agent-batch \
 ```
 
 Reuse the exact command and `batch-id` to resume pending items. Use `--retry-failed` to retry failed items. `--max-items N` intentionally stops after at most `N` eligible items and leaves the batch in `partial` state.
+
+For a controlled input-mode ablation, reuse selected candidates from a completed checksum-valid state:
+
+```bash
+rs-agent-batch \
+  --input /path/to/input.jsonl \
+  --batch-id mixed-replay \
+  --cc-config configs/rs_cc.ablation_mixed.yaml \
+  --vqa-config configs/rs_vqa.smoke.yaml \
+  --task-type caption \
+  --replay-caption-state /path/to/text-baseline/state.json \
+  --replay-caption-label A \
+  --replay-caption-label B
+```
 
 Cross-batch caching is disabled unless `--cache-dir` is supplied. A cache hit requires the same sample content, captions/questions, configs, source tree, runtime versions, and inference options, plus a checksum-valid result artifact. Paper experiments should preserve the generated state and identity alongside their exports.
 
@@ -232,7 +263,8 @@ The mask output is the `argmax` of the MCI model's three-class logits: backgroun
 ## Repository Layout
 
 ```text
-src/rs_agent/applications/    Single-item, batch, preflight, and export CLIs
+src/rs_agent/applications/    Single-item, batch, preflight, export, and Web CLIs
+src/rs_agent/web/             Streamlit input validation, service adapter, and views
 src/rs_agent/core/            Typed contracts, configuration, and artifacts
 src/rs_agent/experiments/     Batch identity, state, cache, and orchestration
 src/rs_agent/providers/       External model adapters and provider preflight
@@ -257,11 +289,11 @@ docs/progress/                Chinese implementation records
 
 ## Next Milestones
 
-- Add replay-controlled candidate freezing for strict RS-CC input-mode ablations.
-- Expand to stratified 50-100 item paper and enhancement pilots when the required model access is available.
-- Re-run and version Change-Agent captions and masks when GPU capacity is restored.
-- Design an optional, separately reported synthesis/arbitration Agent after the paper baseline is frozen.
-- Integrate the Streamlit demo after the experimental evidence pipeline is stable.
+- Expand the strict replay ablation to 50-100 samples stratified by road, building, and mixed changes.
+- Run the original paper model profile when model access is available and report it separately from operational substitutions.
+- Calibrate model-specific image-text prompts and evaluate independent or multi-Judge robustness.
+- Add corpus-level paper metrics, including METEOR and CIDEr, to the verified export path.
+- Add authentication, quotas, and a task queue before any public Web deployment.
 
 ## Acknowledgement
 

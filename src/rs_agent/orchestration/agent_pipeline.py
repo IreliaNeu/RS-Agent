@@ -94,6 +94,7 @@ class RSAgentPipeline:
                 raise ValueError("provided Knowledge Bridge item does not match request")
             if not request.use_knowledge_bridge:
                 raise ValueError("provided knowledge requires use_knowledge_bridge=True")
+            self._validate_provided_knowledge(request.provided_knowledge)
         plan_artifact = self._write_plan(plan, request, run_id)
 
         caption_result: Optional[RSCCPipelineResult] = None
@@ -193,6 +194,15 @@ class RSAgentPipeline:
             evidence=evidence,
             result_artifact=str(result_artifact),
         )
+
+    def _validate_provided_knowledge(self, knowledge: KnowledgeBridgePacket) -> None:
+        source = self.artifacts.read(Path(knowledge.source_result_artifact))
+        if source.artifact_type != "rs_cc_result":
+            raise ValueError("provided knowledge source must be an rs_cc_result artifact")
+        if source.item_id != knowledge.item_id:
+            raise ValueError("provided knowledge source item does not match packet")
+        if source.payload.get("selected_caption") != knowledge.c_star:
+            raise ValueError("provided C* does not match its source artifact")
 
     def _write_plan(
         self, plan: MainAgentPlan, request: RSAgentRequest, run_id: str

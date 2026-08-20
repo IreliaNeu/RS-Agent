@@ -4,8 +4,9 @@
 
 1. The Main Agent validates the image pair, original pair caption, task, and
    optional user question.
-2. RS-CC sends the two original images and the original pair caption to five
-   configured candidate models.
+2. In the paper baseline, RS-CC sends only the original pair caption to five
+   configured candidate models. Explicit enhancement profiles may allow selected
+   multimodal models to read the original image pair as well.
 3. Candidate outputs are preserved unchanged. A separate selector scores them
    and selects the highest-scoring caption `C*`.
 4. The Knowledge Bridge passes only `C*` to RS-VQA when enabled.
@@ -28,7 +29,9 @@ package instead of modifying the orchestration engine.
 
 ## Entry points
 
-The new application service will be the canonical entry point. The existing
-Lagent and Streamlit demo will later become adapters that call this service.
-Legacy Lagent internals are not part of the new core.
+The application service is the canonical entry point. Single-item, batch,
+preflight, export, and Streamlit CLIs all call the same typed pipeline. Legacy
+Lagent internals are retained only as migration reference and are not part of
+the new core. The Streamlit adapter lives under `src/rs_agent/web/` and does not
+contain provider or orchestration logic.
 
