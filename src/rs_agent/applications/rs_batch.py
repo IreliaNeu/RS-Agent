@@ -23,7 +23,11 @@ from rs_agent.experiments.identity import (
     build_experiment_identity,
     sha256_file,
 )
-from rs_agent.experiments.replay import load_caption_replays, normalize_replay_labels
+from rs_agent.experiments.replay import (
+    load_caption_replays,
+    load_selected_knowledge,
+    normalize_replay_labels,
+)
 from rs_agent.experiments.state import BatchStateStore
 from rs_agent.orchestration.agent_pipeline import RSAgentPipeline, RSAgentRequest
 from rs_agent.providers.registry import ProviderRegistry
@@ -65,6 +69,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Candidate label to replay from the baseline state (repeatable)",
     )
+    parser.add_argument(
+        "--provided-knowledge-state",
+        type=Path,
+        help="Completed caption batch whose selected C* is reused by a VQA-only run",
+    )
     parser.add_argument("--dry-run", action="store_true")
     return parser
 
@@ -85,6 +94,10 @@ def options(args: argparse.Namespace) -> dict:
         values["replay_caption_labels"] = normalize_replay_labels(
             args.replay_caption_label
         )
+    if args.provided_knowledge_state is not None:
+        values["provided_knowledge_state_sha256"] = sha256_file(
+            args.provided_knowledge_state.resolve()
+        )
     return values
 
 
@@ -101,6 +114,13 @@ def mask_request(item: BatchItem, args: argparse.Namespace) -> Optional[MaskEvid
 
 async def execute(args: argparse.Namespace) -> dict:
     items = load_batch_items(args.input)
+    if args.provided_knowledge_state is not None:
+        if args.task_type != "vqa":
+            raise ValueError("--provided-knowledge-state requires --task-type vqa")
+        if args.without_knowledge_bridge:
+            raise ValueError("provided knowledge requires Knowledge Bridge")
+        if args.replay_caption_state is not None or args.replay_caption_label:
+            raise ValueError("caption replay and provided knowledge are mutually exclusive")
     if bool(args.replay_caption_state) != bool(args.replay_caption_label):
         raise ValueError(
             "--replay-caption-state and --replay-caption-label must be used together"
@@ -110,12 +130,24 @@ async def execute(args: argparse.Namespace) -> dict:
         if args.replay_caption_state is not None
         else {}
     )
+    provided_knowledge = (
+        load_selected_knowledge(args.provided_knowledge_state)
+        if args.provided_knowledge_state is not None
+        else {}
+    )
     missing_replays = [
         item.item_id for item in items if item.item_id not in caption_replays
     ]
     if caption_replays and missing_replays:
         raise ValueError(
             "replay state is missing input items: {}".format(missing_replays)
+        )
+    missing_knowledge = [
+        item.item_id for item in items if item.item_id not in provided_knowledge
+    ]
+    if provided_knowledge and missing_knowledge:
+        raise ValueError(
+            "knowledge state is missing input items: {}".format(missing_knowledge)
         )
     cc_config = load_rs_cc_config(args.cc_config)
     vqa_config = load_rs_vqa_config(args.vqa_config)
@@ -155,8 +187,10 @@ async def execute(args: argparse.Namespace) -> dict:
                 task_type=TASK_TYPES[args.task_type],
                 user_questions=item.user_questions,
                 use_knowledge_bridge=not args.without_knowledge_bridge,
+                provided_knowledge=provided_knowledge.get(item.item_id),
                 mask=mask_request(item, args),
                 replayed_caption_candidates=caption_replays.get(item.item_id, {}),
+                metadata=item.metadata,
             ),
             run_id,
         )

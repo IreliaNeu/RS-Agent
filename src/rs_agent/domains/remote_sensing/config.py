@@ -20,6 +20,7 @@ from rs_agent.experiments.protocol import (
 class CaptionPromptProfile(str, Enum):
     BASE = "base"
     COT_WITHOUT_BACKGROUND = "cot_without_background"
+    COT_WITH_BACKGROUND = "cot_with_background"
 
 
 class CaptionInputMode(str, Enum):

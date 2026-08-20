@@ -11,6 +11,7 @@ from pydantic import Field
 
 from rs_agent.core.config import ModelConfig, ProviderConfig
 from rs_agent.core.schemas import StrictModel
+from rs_agent.providers.openai_compatible import chat_completions_url
 
 
 class CheckStatus(str, Enum):
@@ -24,6 +25,9 @@ class ModelVisibility(StrictModel):
     name: str
     model: str
     visible: Optional[bool] = None
+    callable: Optional[bool] = None
+    probe_http_status: Optional[int] = None
+    probe_message: str = ""
 
 
 class ProviderPreflightResult(StrictModel):
@@ -39,6 +43,7 @@ class ProviderPreflightResult(StrictModel):
 
 class PreflightReport(StrictModel):
     network_checked: bool
+    completions_probed: bool = False
     providers: List[ProviderPreflightResult]
     ok: bool
 
@@ -87,7 +92,10 @@ async def run_preflight(
     provider_models: Dict[str, Tuple[ProviderConfig, List[ModelConfig]]],
     *,
     check_network: bool,
+    probe_completions: bool = False,
 ) -> PreflightReport:
+    if probe_completions and not check_network:
+        raise ValueError("completion probes require check_network=True")
     async def inspect(
         name: str, config: ProviderConfig, models: List[ModelConfig]
     ) -> ProviderPreflightResult:
@@ -178,18 +186,82 @@ async def run_preflight(
             for item in models
         ]
         missing = [item.model for item in checked if item.visible is False]
+        if probe_completions:
+            probed = []
+            probe_headers = {
+                **headers,
+                "Content-Type": "application/json",
+            }
+            async with httpx.AsyncClient(timeout=config.timeout_seconds) as client:
+                for item in checked:
+                    try:
+                        probe = await client.post(
+                            chat_completions_url(config.base_url),
+                            headers=probe_headers,
+                            json={
+                                "model": item.model,
+                                "messages": [
+                                    {"role": "user", "content": "Reply with OK."}
+                                ],
+                                "temperature": 0,
+                                "max_tokens": 4,
+                            },
+                        )
+                    except httpx.HTTPError as exc:
+                        probed.append(
+                            item.model_copy(
+                                update={
+                                    "callable": False,
+                                    "probe_message": "transport:{}".format(
+                                        type(exc).__name__
+                                    ),
+                                }
+                            )
+                        )
+                    else:
+                        probed.append(
+                            item.model_copy(
+                                update={
+                                    "callable": probe.status_code < 400,
+                                    "probe_http_status": probe.status_code,
+                                    "probe_message": (
+                                        "completion endpoint accepted the model"
+                                        if probe.status_code < 400
+                                        else "completion endpoint returned HTTP {}".format(
+                                            probe.status_code
+                                        )
+                                    ),
+                                }
+                            )
+                        )
+            checked = probed
+        blocked = [item.model for item in checked if item.callable is False]
+        status = (
+            CheckStatus.ERROR
+            if blocked
+            else CheckStatus.WARNING
+            if missing
+            else CheckStatus.OK
+        )
+        details = []
+        if missing:
+            details.append("not listed: {}".format(missing))
+        if blocked:
+            details.append("completion probe failed: {}".format(blocked))
         return ProviderPreflightResult(
             provider=name,
             base_url=config.base_url,
             api_key_env=config.api_key_env,
             credential_status=CheckStatus.OK,
-            endpoint_status=CheckStatus.WARNING if missing else CheckStatus.OK,
+            endpoint_status=status,
             http_status=response.status_code,
             models=checked,
             message=(
-                "endpoint reachable; configured models not listed: {}".format(missing)
-                if missing
-                else "endpoint reachable and configured models are visible"
+                "endpoint reachable; " + "; ".join(details)
+                if details
+                else "endpoint reachable; configured models are visible{}".format(
+                    " and callable" if probe_completions else ""
+                )
             ),
         )
 
@@ -204,4 +276,9 @@ async def run_preflight(
         and result.endpoint_status != CheckStatus.ERROR
         for result in results
     )
-    return PreflightReport(network_checked=check_network, providers=results, ok=ok)
+    return PreflightReport(
+        network_checked=check_network,
+        completions_probed=probe_completions,
+        providers=results,
+        ok=ok,
+    )

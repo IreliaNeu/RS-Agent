@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import Field
 
@@ -44,6 +44,7 @@ class RSAgentRequest(StrictModel):
     replayed_caption_candidates: Dict[str, CaptionReplayCandidate] = Field(
         default_factory=dict
     )
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class MaskEvidencePipelineResult(StrictModel):
@@ -149,6 +150,7 @@ class RSAgentPipeline:
             item_id=request.item_id,
             payload={
                 "item_id": request.item_id,
+                "metadata": request.metadata,
                 "task_type": request.task_type.value,
                 "plan": plan.model_dump(mode="json"),
                 "original_caption": request.original_caption,
@@ -224,6 +226,7 @@ class RSAgentPipeline:
                         if request.provided_knowledge
                         else None
                     ),
+                    "metadata": request.metadata,
                 },
             },
         )

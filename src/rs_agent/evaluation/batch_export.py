@@ -23,6 +23,8 @@ from rs_agent.evaluation.candidate_metrics import (
     caption_metric_values,
     summarize_candidate_metrics,
 )
+from rs_agent.evaluation.corpus_metrics import corpus_caption_metrics
+from rs_agent.evaluation.paper_benchmark import build_paper_benchmark_summary
 from rs_agent.evaluation.reference_metrics import (
     REFERENCE_METRICS_VERSION,
     CaptionMetricRecord,
@@ -118,8 +120,11 @@ def _request_row(
 
 
 def _caption_data(
-    item_id: str, result_payload: Dict[str, Any]
+    item_id: str,
+    result_payload: Dict[str, Any],
+    metadata: Optional[Dict[str, Any]] = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    metadata = metadata or {}
     result_path = result_payload["source_artifacts"].get("rs_cc_result")
     if not result_path:
         return [], []
@@ -142,6 +147,8 @@ def _caption_data(
         rows.append(
             {
                 "item_id": item_id,
+                "dataset": metadata.get("dataset", "unspecified"),
+                "change_type": metadata.get("change_type", "unspecified"),
                 "label": candidate["label"],
                 "input_mode": candidate.get("input_mode", "text_only"),
                 "generation_mode": candidate.get("generation_mode", "generated"),
@@ -195,8 +202,11 @@ def _caption_data(
 
 
 def _vqa_data(
-    item_id: str, result_payload: Dict[str, Any]
+    item_id: str,
+    result_payload: Dict[str, Any],
+    metadata: Optional[Dict[str, Any]] = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    metadata = metadata or {}
     result_path = result_payload["source_artifacts"].get("rs_vqa_result")
     if not result_path:
         return [], []
@@ -228,6 +238,8 @@ def _vqa_data(
         rows.append(
             {
                 "item_id": item_id,
+                "dataset": metadata.get("dataset", "unspecified"),
+                "change_type": metadata.get("change_type", "unspecified"),
                 "question_id": question_id,
                 "question": question["text"],
                 "question_source": question["source"],
@@ -429,6 +441,7 @@ def export_batch(
             continue
         result = read_artifact(item_state.result_artifact or "", "rs_agent_result")
         payload = result.payload
+        metadata = payload.get("metadata") or {}
         evidence = payload.get("evidence") or {}
         consensus = evidence.get("consensus", "unknown")
         consensus_counts[consensus] += 1
@@ -460,6 +473,9 @@ def export_batch(
             {
                 "item_id": item_id,
                 "run_id": item_state.run_id,
+                "dataset": metadata.get("dataset", "unspecified"),
+                "change_type": metadata.get("change_type", "unspecified"),
+                "metadata": metadata,
                 "task_type": payload.get("task_type"),
                 "original_caption": payload.get("original_caption"),
                 "selected_caption": payload.get("selected_caption"),
@@ -471,8 +487,10 @@ def export_batch(
                 "result_artifact": item_state.result_artifact,
             }
         )
-        item_caption_rows, item_caption_requests = _caption_data(item_id, payload)
-        item_vqa_rows, item_vqa_requests = _vqa_data(item_id, payload)
+        item_caption_rows, item_caption_requests = _caption_data(
+            item_id, payload, metadata
+        )
+        item_vqa_rows, item_vqa_requests = _vqa_data(item_id, payload, metadata)
         caption_rows.extend(item_caption_rows)
         vqa_rows.extend(item_vqa_rows)
         request_rows.extend(item_caption_requests)
@@ -485,8 +503,16 @@ def export_batch(
     candidate_metric_rows: List[Dict[str, Any]] = []
     candidate_metric_summary: List[Dict[str, Any]] = []
     selected_metric_intervals: Dict[str, Any] = {}
+    corpus_metrics: Dict[str, float] = {}
     if references_path is not None:
         references = load_reference_manifest(references_path)
+        corpus_metrics = corpus_caption_metrics(
+            {
+                str(item["item_id"]): str(item.get("selected_caption") or "")
+                for item in item_rows
+            },
+            references,
+        )
         candidate_metric_rows = build_candidate_metric_rows(caption_rows, references)
         candidate_metric_summary = summarize_candidate_metrics(
             candidate_metric_rows,
@@ -506,6 +532,7 @@ def export_batch(
             name: interval.model_dump(mode="json")
             for name, interval in intervals.items()
         }
+    paper_benchmark_rows = build_paper_benchmark_summary(caption_rows, vqa_rows)
     summary = {
         "batch_id": state.batch_id,
         "batch_status": state.status.value,
@@ -529,6 +556,7 @@ def export_batch(
         ),
         "request_telemetry_rows": len(request_rows),
         "caption_reference_metrics": mean_caption_metrics(metric_records),
+        "caption_corpus_metrics": corpus_metrics,
         "caption_reference_metric_intervals": selected_metric_intervals,
         "caption_candidate_reference_rows": len(candidate_metric_rows),
         "caption_reference_matched_items": len(metric_records),
@@ -545,6 +573,8 @@ def export_batch(
         "metric_definitions": {
             "primary": "LLM-as-Judge score and highest_score_then_judge selection",
             "bleu": "dependency-light unsmoothed sentence BLEU averaged over items",
+            "corpus_bleu": "unsmoothed cumulative corpus BLEU-1 through BLEU-4",
+            "cider": "TF-IDF cosine CIDEr averaged over 1-4 grams and scaled by 10",
             "rouge_l": "best-reference ROUGE-L F-score with beta=1.2",
             "change_flag": "keyword-derived selected-caption flag versus LEVIR-MCI annotation",
             "latency": "end-to-end provider request wall time including retries",
@@ -555,6 +585,7 @@ def export_batch(
     _write_json(
         output_dir / "experiment_identity.json", state.experiment.model_dump(mode="json")
     )
+    _write_json(output_dir / "caption_corpus_metrics.json", corpus_metrics)
     _write_jsonl(output_dir / "items.jsonl", item_rows)
     _write_jsonl(output_dir / "failures.jsonl", failure_rows)
     common = [
@@ -583,6 +614,8 @@ def export_batch(
         caption_rows,
         [
             common[0],
+            "dataset",
+            "change_type",
             "input_mode",
             "generation_mode",
             "source_candidate_id",
@@ -593,7 +626,15 @@ def export_batch(
     _write_csv(
         output_dir / "vqa_scores.csv",
         vqa_rows,
-        ["item_id", "question_id", "question", "question_source", *common[1:]],
+        [
+            "item_id",
+            "dataset",
+            "change_type",
+            "question_id",
+            "question",
+            "question_source",
+            *common[1:],
+        ],
     )
     request_columns = [
         "item_id",
@@ -660,10 +701,33 @@ def export_batch(
         ],
     )
     _write_csv(
+        output_dir / "paper_benchmark_summary.csv",
+        paper_benchmark_rows,
+        [
+            "stage",
+            "scope",
+            "dataset",
+            "change_type",
+            "question_id",
+            "model_name",
+            "provider",
+            "model_id",
+            "candidate_count",
+            "successful_count",
+            "score_count",
+            "mean_score",
+            "population_std",
+            "selected_count",
+            "judge_choice_count",
+        ],
+    )
+    _write_csv(
         output_dir / "caption_candidate_reference_metrics.csv",
         candidate_metric_rows,
         [
             "item_id",
+            "dataset",
+            "change_type",
             "label",
             "input_mode",
             "model_name",

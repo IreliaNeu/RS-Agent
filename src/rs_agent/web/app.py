@@ -22,9 +22,13 @@ TASK_MODES = {
     "VQA": TaskType.VQA,
 }
 PROFILE_PATHS = {
+    "Method image + text": (
+        "configs/rs_cc.method_image_text.yaml",
+        "configs/rs_vqa.adapted.yaml",
+    ),
     "Adapted mixed": ("configs/rs_cc.adapted.yaml", "configs/rs_vqa.adapted.yaml"),
     "Operational": ("configs/rs_cc.smoke.yaml", "configs/rs_vqa.smoke.yaml"),
-    "Paper baseline": ("configs/rs_cc.paper.yaml", "configs/rs_vqa.paper.yaml"),
+    "Paper experiment": ("configs/rs_cc.paper.yaml", "configs/rs_vqa.paper.yaml"),
 }
 
 

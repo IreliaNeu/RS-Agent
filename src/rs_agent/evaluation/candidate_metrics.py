@@ -39,6 +39,8 @@ def build_candidate_metric_rows(
         output.append(
             {
                 "item_id": candidate["item_id"],
+                "dataset": candidate.get("dataset", "unspecified"),
+                "change_type": candidate.get("change_type", "unspecified"),
                 "label": candidate["label"],
                 "input_mode": candidate.get("input_mode", "text_only"),
                 "model_name": candidate["model_name"],

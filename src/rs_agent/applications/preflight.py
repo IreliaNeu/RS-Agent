@@ -22,6 +22,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--vqa-config", type=Path, default=Path("configs/rs_vqa.smoke.yaml"))
     parser.add_argument("--env-file", type=Path, default=Path(".env"))
     parser.add_argument("--network", action="store_true", help="Query each /models endpoint")
+    parser.add_argument(
+        "--probe-completions",
+        action="store_true",
+        help="Send one minimal chat completion to every configured model",
+    )
     return parser
 
 
@@ -40,7 +45,11 @@ async def inspect(args: argparse.Namespace) -> dict:
             ),
         ]
     )
-    report = await run_preflight(provider_models, check_network=args.network)
+    report = await run_preflight(
+        provider_models,
+        check_network=args.network or args.probe_completions,
+        probe_completions=args.probe_completions,
+    )
     return {
         "cc_profile": cc.profile,
         "vqa_profile": vqa.profile,

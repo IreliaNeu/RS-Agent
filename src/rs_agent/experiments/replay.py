@@ -9,6 +9,7 @@ from rs_agent.core.artifacts import JsonArtifactStore
 from rs_agent.core.schemas import ModelRef
 from rs_agent.domains.remote_sensing.caption_agent import CaptionReplayCandidate
 from rs_agent.experiments.state import BatchStateStore, ItemStatus
+from rs_agent.orchestration.knowledge_bridge import KnowledgeBridgePacket
 
 
 def _read(path: str, expected_type: str):
@@ -88,4 +89,39 @@ def load_caption_replays(
                 source_artifact=str(Path(generation_path).resolve()),
             )
         output[item_id] = item_replays
+    return output
+
+def load_selected_knowledge(
+    state_path: Path,
+) -> Dict[str, KnowledgeBridgePacket]:
+    """Load each completed run's selected C* with immutable artifact provenance."""
+    state = BatchStateStore(state_path.resolve()).read()
+    output: Dict[str, KnowledgeBridgePacket] = {}
+    for item_id, item_state in state.items.items():
+        if item_state.status != ItemStatus.COMPLETED or not item_state.result_artifact:
+            raise ValueError("knowledge source item {} is not completed".format(item_id))
+        result = _read(item_state.result_artifact, "rs_agent_result")
+        if result.item_id != item_id:
+            raise ValueError("knowledge result item ID does not match state")
+        caption_result_path = result.payload.get("source_artifacts", {}).get(
+            "rs_cc_result"
+        )
+        if not caption_result_path:
+            raise ValueError(
+                "knowledge source item {} has no RS-CC result".format(item_id)
+            )
+        caption_result = _read(caption_result_path, "rs_cc_result")
+        if caption_result.item_id != item_id:
+            raise ValueError("knowledge RS-CC item ID does not match state")
+        c_star = str(caption_result.payload.get("selected_caption") or "").strip()
+        if not c_star:
+            raise ValueError(
+                "knowledge source item {} has no selected C*".format(item_id)
+            )
+        output[item_id] = KnowledgeBridgePacket(
+            run_id=caption_result.run_id,
+            item_id=item_id,
+            c_star=c_star,
+            source_result_artifact=str(Path(caption_result_path).resolve()),
+        )
     return output
