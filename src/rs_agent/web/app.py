@@ -274,7 +274,10 @@ def render_app() -> None:
             manifest_path = st.text_input("Manifest", value=default_manifest)
             env_file = st.text_input("Environment", value=str(repo_root / ".env"))
             artifact_dir = st.text_input(
-                "Artifacts", value=str(repo_root / "artifacts" / "web")
+                "Artifacts",
+                value=os.getenv(
+                    "RS_AGENT_WEB_ARTIFACT_DIR", str(repo_root / "artifacts" / "web")
+                ),
             )
 
     try:

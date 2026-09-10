@@ -138,16 +138,23 @@ Use `--question` one or more times for user questions. If no question is supplie
 
 ## Streamlit Demo
 
-Run the research interface on a local-only listener:
+Run the research interface on a server-local listener:
 
 ```bash
 export RS_AGENT_REPO_ROOT=/path/to/RS-Agent
 export RS_AGENT_DEMO_MANIFEST=/path/to/levir_mci_test_100_with_masks.jsonl
 export RS_AGENT_WEB_WORKDIR=/path/to/web-work
+export RS_AGENT_WEB_ARTIFACT_DIR=/path/to/web-artifacts
 rs-agent-web --server.address 127.0.0.1 --server.port 8501
 ```
 
-The interface supports manifest samples and validated uploads, paper/operational/enhancement profiles, caption/VQA/combined tasks, Knowledge Bridge ablation, optional masks, candidate and Judge ledgers, evidence conflicts, and artifact provenance. Follow-up questions reuse the previous provenance-linked `C*` and execute RS-VQA only. Set `RS_AGENT_WEB_PASSWORD` for a lightweight research-demo password gate. Public deployment still requires TLS, a reverse proxy, rate limiting, a job queue, and user-level quotas.
+For a detached internal deployment, use `scripts/manage_internal_web_demo.sh start|status|stop`. The manager refuses non-loopback addresses and keeps its PID, log, uploads, and artifacts outside the repository when the runtime variables are configured. Access the server-local listener through an SSH tunnel:
+
+```bash
+ssh -p 36247 -L 8501:127.0.0.1:8501 root@connect.bjb1.seetacloud.com
+```
+
+Then open `http://127.0.0.1:8501` locally. The interface supports manifest samples and validated uploads, paper/operational/enhancement profiles, caption/VQA/combined tasks, Knowledge Bridge ablation, optional masks, candidate and Judge ledgers, evidence conflicts, and artifact provenance. Follow-up questions reuse the previous provenance-linked `C*` and execute RS-VQA only. Set `RS_AGENT_WEB_PASSWORD` for an optional research-demo password gate. The documented deployment is intentionally server-internal and does not require public exposure.
 
 ## Batch Experiments
 
@@ -275,6 +282,12 @@ Phase 11 audited the paper PDF against the formal legacy evaluation script, adde
 A strict with/without-Knowledge-Bridge pilot reused the same selected `C*` artifacts and issued zero RS-CC requests in both VQA runs. Its mean Judge-score delta was +0.2 with a 95% bootstrap interval of [-0.4, 0.8] over five questions, so it validates orchestration but supports no quality claim. Replaying the same 25 caption candidates under Qwen3 and DeepSeek Judges produced selection agreement 1.0, Cohen's kappa 1.0, score Pearson 0.8581, and score MAE 0.92. Qwen3-Embedding-0.6B and blind A/B preparation were also executed for the same five items; no human preference result is claimed because responses have not been collected.
 
 The current server cannot execute the exact paper profile end to end: OpenRouter completion requests for the configured Claude and OpenAI roles return HTTP 403, and the reported Qwen2.5-VL-32B role is unavailable through the configured SiliconFlow account. These are recorded availability constraints, not silent model replacements. See the Chinese [Phase 11 audit](docs/PROJECT_STATUS_AND_PAPER_ALIGNMENT_PHASE11.zh-CN.md) for artifacts, hashes, boundaries, and migration guidance.
+
+## Phase 12 Method-Reproduction Run
+
+The capability-aware method path was executed on the checksum-identified 50-item LEVIR-MCI stratified manifest. The run completed 50/50 items with 250/250 RS-CC candidates, 250/250 RS-VQA candidates, zero generation failures, and 700 provider requests. It used the explicitly labeled substitute-model method profile, selected only `C*` for the Knowledge Bridge, supplied only the original image pair to RS-VQA, and treated predicted masks as separate evidence. The experiment fingerprint is `226f5b02bdf36aea1245c64080e50e8a6a6c1f1c02ca1c70787e14c4e217b814`.
+
+This phase validates method-level reproduction and system behavior. It does not claim exact reproduction of the paper's unavailable model roster, human preference statistics, inter-rater agreement, or publication-ready conclusions.
 
 ## Change-Agent Batch Inference
 

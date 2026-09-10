@@ -35,6 +35,8 @@ def test_streamlit_app_renders_dataset_sample_without_exceptions(
     monkeypatch.setenv("RS_AGENT_REPO_ROOT", str(repo_root))
     monkeypatch.setenv("RS_AGENT_DEMO_MANIFEST", str(manifest))
     monkeypatch.setenv("RS_AGENT_WEB_WORKDIR", str(tmp_path / "web"))
+    artifact_dir = tmp_path / "external-artifacts"
+    monkeypatch.setenv("RS_AGENT_WEB_ARTIFACT_DIR", str(artifact_dir))
 
     app = AppTest.from_file(str(repo_root / "src" / "rs_agent" / "web" / "app.py"))
     app.run(timeout=20)
@@ -42,6 +44,8 @@ def test_streamlit_app_renders_dataset_sample_without_exceptions(
     assert not app.exception
     assert app.title[0].value == "RS-Agent"
     assert "sample-1" in [widget.value for widget in app.selectbox]
+    assert str(artifact_dir) in [widget.value for widget in app.text_input]
+
 
 def test_streamlit_app_requires_configured_password(monkeypatch) -> None:
     repo_root = Path(__file__).resolve().parents[1]
