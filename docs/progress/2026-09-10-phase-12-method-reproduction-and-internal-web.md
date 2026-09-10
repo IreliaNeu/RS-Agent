@@ -127,7 +127,8 @@ scripts/manage_internal_web_demo.sh stop
 - `bash -n scripts/manage_internal_web_demo.sh`：通过；
 - Streamlit `/_stcore/health`：`ok`；
 - 重复 `start`：正确识别已运行进程；
-- GitHub Actions workflow 已加入，但需要 push 后由 GitHub 运行。
+- GitHub Actions：提交 `7bf24fb` 的 main 与发布分支两次运行均通过；
+- GitHub 默认 `main` 与 `agent/rs-cc-pipeline` 均已发布到 `7bf24fb`。
 
 ## 当前问题
 
