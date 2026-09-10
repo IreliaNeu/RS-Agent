@@ -47,6 +47,13 @@ def _require_password() -> None:
     st.stop()
 
 
+def _is_accessible_file(path: str | Path) -> bool:
+    try:
+        return Path(path).is_file()
+    except OSError:
+        return False
+
+
 def _session_directory() -> Path:
     if "session_id" not in st.session_state:
         st.session_state.session_id = uuid4().hex
@@ -267,7 +274,7 @@ def render_app() -> None:
         task_label = st.radio("Task", list(TASK_MODES), horizontal=True)
         use_bridge = st.toggle("Knowledge Bridge", value=True)
         source_options = ["Upload pair"]
-        if Path(default_manifest).is_file():
+        if _is_accessible_file(default_manifest):
             source_options.insert(0, "Dataset sample")
         source_mode = st.radio("Input", source_options)
         with st.expander("Paths"):
